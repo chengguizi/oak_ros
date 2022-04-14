@@ -79,34 +79,39 @@ private:
     dai::Pipeline m_pipeline;
 
     std::shared_ptr<dai::Device> m_device;
-    std::shared_ptr<dai::DataOutputQueue> m_leftQueue, m_rightQueue, m_depthQueue, m_rgbQueue, m_imuQueue;
+    std::shared_ptr<dai::DataOutputQueue> m_leftQueue, m_rightQueue, m_depthQueue, m_rgbQueue, m_camDQueue, m_imuQueue;
 
     std::shared_ptr<dai::DataInputQueue> m_controlQueue;
 
     // WORKAROUND FOR OV7251, inability to reduce framerate
-    std::shared_ptr<dai::node::Script> m_scriptLeft;
-    std::shared_ptr<dai::node::Script> m_scriptRight;
+    std::shared_ptr<dai::node::Script> m_scriptLeft, m_scriptRight;
+    std::shared_ptr<dai::node::Script> m_scriptRgb, m_scriptCamD;
 
     std::shared_ptr<dai::node::MonoCamera> m_monoLeft, m_monoRight;
     std::shared_ptr<dai::node::StereoDepth> m_stereoDepth;
 
-    std::shared_ptr<dai::node::ColorCamera> m_colorMain;
+    std::shared_ptr<dai::node::MonoCamera> m_rgb, m_camD;
 
     std::shared_ptr<dai::node::IMU> m_imu;
 
     std::thread m_run, m_watchdog;
     void run();
 
+    void runOnceStereo();
+    void runOnceAllFourCams();
+
     // the fuctions below is to setup pipeline before m_device
     void configureRatesWorkaround();
     std::shared_ptr<dai::node::XLinkIn> configureControl();
     void configureImu();
-    void configureStereo();
+    void configureStereoRgbCamD();
 
     // the functions below assumes m_device is properly setup
     void setupControlQueue(std::shared_ptr<dai::node::XLinkIn>);
     void setupImuQueue();
     void setupStereoQueue();
+    void setupRgbQueue();
+    void setupCamDQueue();
 
     void depthCallback(std::shared_ptr<dai::ADatatype> data);
     void imuCallback(std::shared_ptr<dai::ADatatype> data);
@@ -116,7 +121,7 @@ private:
     // ROS related functionalities
     ros::NodeHandle m_nh;
     std::shared_ptr<image_transport::ImageTransport> m_imageTransport;
-    std::shared_ptr<image_transport::CameraPublisher> m_leftPub, m_rightPub;
+    std::shared_ptr<image_transport::CameraPublisher> m_leftPub, m_rightPub, m_rgbPub, m_camDPub;
     std::shared_ptr<ros::Publisher> m_imuPub;
 
 };

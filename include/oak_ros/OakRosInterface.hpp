@@ -58,6 +58,7 @@ struct OakRosParams
     // dai::StereoDepthProperties
 
     bool enable_rgb = false;
+    bool enable_camD = false;
     std::optional<dai::ColorCameraProperties::SensorResolution> rgb_resolution = {}; // dai::ColorCameraProperties::SensorResolution::THE_1080_P;
 
     bool enable_imu = false;

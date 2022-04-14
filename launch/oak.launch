@@ -11,6 +11,7 @@
 
     <node ns="$(arg vehicle)" pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
         <param name="resolution" value="$(arg resolution)"/>
+        <param name="rates_workaround" value="true"/>
         <param name="poe_mode" value="false"/>
         <param name="only_usb2_mode" value="true"/>
         <param name="mesh_dir" type ="string" value="$(find oak_ros)/data"/> 
