@@ -59,6 +59,7 @@ struct OakRosParams
 
     bool enable_rgb = false;
     bool enable_camD = false;
+    bool hardware_sync = true;
     std::optional<dai::ColorCameraProperties::SensorResolution> rgb_resolution = {}; // dai::ColorCameraProperties::SensorResolution::THE_1080_P;
 
     bool enable_imu = false;

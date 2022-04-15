@@ -163,6 +163,8 @@ int main(int argc, char **argv)
         params.enable_stereo_rectified = option_rectified;
         params.enable_mesh_dir = option_mesh_dir;
 
+        params.hardware_sync = true;
+
         if (option_resolution == 480)
             params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_480_P;
         else if(option_resolution == 400)

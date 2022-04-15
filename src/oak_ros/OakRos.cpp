@@ -112,7 +112,6 @@ void OakRos::configureRatesWorkaround() {
         m_scriptRight = m_pipeline.create<dai::node::Script>();
         // Half the rates of all left and right images
         m_scriptLeft->setScript(R"(
-            i = 0
             while True:
                 frame = node.io['frameLeft'].get()
                 if frame.getSequenceNum() % 3 == 1:
@@ -126,7 +125,7 @@ void OakRos::configureRatesWorkaround() {
                     node.io['streamRight'].send(frame)
             )");
     }
-    
+
     if (m_params.enable_rgb) {
         m_scriptRgb = m_pipeline.create<dai::node::Script>();
         m_scriptRgb->setScript(R"(
@@ -136,7 +135,7 @@ void OakRos::configureRatesWorkaround() {
                     node.io['streamRgb'].send(frame)
             )");
     }
-    
+
     if (m_params.enable_camD) {
         m_scriptCamD = m_pipeline.create<dai::node::Script>();
         m_scriptCamD->setScript(R"(
@@ -146,7 +145,6 @@ void OakRos::configureRatesWorkaround() {
                     node.io['streamCamD'].send(frame)
             )");
     }
-    
 }
 
 std::shared_ptr<dai::node::XLinkIn> OakRos::configureControl() {
@@ -219,15 +217,11 @@ void OakRos::configureImu() {
 }
 
 void OakRos::configureStereoRgbCamD() {
-
-    auto xoutLeft = m_pipeline.create<dai::node::XLinkOut>();
-    auto xoutRight = m_pipeline.create<dai::node::XLinkOut>();
-    auto xoutRgb = m_pipeline.create<dai::node::XLinkOut>();
-    auto xoutCamD = m_pipeline.create<dai::node::XLinkOut>();
+    std::shared_ptr<dai::node::XLinkOut> xoutLeft, xoutRight, xoutRgb, xoutCamD;
+    xoutLeft = m_pipeline.create<dai::node::XLinkOut>();
+    xoutRight = m_pipeline.create<dai::node::XLinkOut>();
     xoutLeft->setStreamName("left");
     xoutRight->setStreamName("right");
-    xoutRgb->setStreamName("rgb");
-    xoutCamD->setStreamName("camd");
 
     // configure the stereo sensors' format
     std::shared_ptr<dai::node::StereoDepth> stereoDepth;
@@ -235,6 +229,8 @@ void OakRos::configureStereoRgbCamD() {
     m_monoRight = m_pipeline.create<dai::node::MonoCamera>();
 
     if (m_params.enable_rgb) {
+        xoutRgb = m_pipeline.create<dai::node::XLinkOut>();
+        xoutRgb->setStreamName("rgb");
         spdlog::info("Enable RGB socket camera...");
         m_rgb = m_pipeline.create<dai::node::MonoCamera>();
         if (m_params.stereo_resolution)
@@ -255,6 +251,8 @@ void OakRos::configureStereoRgbCamD() {
     }
 
     if (m_params.enable_camD) {
+        xoutCamD = m_pipeline.create<dai::node::XLinkOut>();
+        xoutCamD->setStreamName("camd");
         spdlog::info("Enable CAM_D socket camera...");
         m_camD = m_pipeline.create<dai::node::MonoCamera>();
         if (m_params.stereo_resolution)
@@ -366,11 +364,21 @@ void OakRos::configureStereoRgbCamD() {
             }
         }
     }
+
+    if (m_params.hardware_sync) {
+        m_monoLeft->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+        m_monoRight->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::OUTPUT);
+
+        if (m_params.enable_rgb)
+            m_rgb->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+        if (m_params.enable_camD)
+            m_camD->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+    }
 }
 
 void OakRos::setupStereoQueue() {
-    m_leftQueue = m_device->getOutputQueue("left", 2, false);
-    m_rightQueue = m_device->getOutputQueue("right", 2, false);
+    m_leftQueue = m_device->getOutputQueue("left", 5, false);
+    m_rightQueue = m_device->getOutputQueue("right", 5, false);
 
     spdlog::info("{} advertising stereo cameras in ros topics...", m_params.device_id);
 
@@ -381,7 +389,7 @@ void OakRos::setupStereoQueue() {
 }
 
 void OakRos::setupRgbQueue() {
-    m_rgbQueue = m_device->getOutputQueue("rgb", 2, false);
+    m_rgbQueue = m_device->getOutputQueue("rgb", 5, false);
 
     spdlog::info("{} advertising rgb cameras in ros topic...", m_params.device_id);
     m_rgbPub.reset(new auto(
@@ -389,7 +397,7 @@ void OakRos::setupRgbQueue() {
 }
 
 void OakRos::setupCamDQueue() {
-    m_camDQueue = m_device->getOutputQueue("camd", 2, false);
+    m_camDQueue = m_device->getOutputQueue("camd", 5, false);
 
     spdlog::info("{} advertising camd cameras in ros topic...", m_params.device_id);
     m_camDPub.reset(new auto(
@@ -426,16 +434,23 @@ void OakRos::run() {
 
         bool runAllFourCams =
             m_leftQueue.get() && m_rightQueue.get() && m_rgbQueue.get() && m_camDQueue.get();
+
+        if (runAllFourCams)
+            spdlog::info("Streaming all four cameras");
+
         bool runStereo = !runAllFourCams && m_leftQueue.get() && m_rightQueue.get();
+
+        if (runStereo)
+            spdlog::info("Streaming stereo cameras only");
 
         long seqLeft = -1, seqRight = -1, seqRgb = -1, seqCamD = -1;
         long maxSeq = 0;
+
+        std::shared_ptr<dai::ImgFrame> left, right, rgb, camD;
         while (m_running) {
             // process stereo data
 
             if (runStereo || runAllFourCams) {
-
-                std::shared_ptr<dai::ImgFrame> left, right, rgb, camD;
 
                 try {
 
@@ -476,33 +491,37 @@ void OakRos::run() {
                 // if any of the sequence does not match the latest one, try again
                 bool retry = false;
                 if (seqLeft != maxSeq) {
-                    seqLeft = -1;
+                    // seqLeft = -1;
                     retry = true;
                 }
                 if (seqRight != maxSeq) {
-                    seqRight = -1;
+                    // seqRight = -1;
                     retry = true;
                 }
 
                 if (runAllFourCams && seqRgb != maxSeq) {
-                    seqRgb = -1;
+                    // seqRgb = -1;
                     retry = true;
                 }
                 if (runAllFourCams && seqCamD != maxSeq) {
-                    seqCamD = -1;
+                    // seqCamD = -1;
                     retry = true;
                 }
 
-                if (retry)
+                spdlog::info("left = {}, right = {}, rgb = {}, camd = {}, maxSeq = {}", seqLeft,
+                             seqRight, seqRgb, seqCamD, maxSeq);
+
+                if (m_params.hardware_sync && retry)
                     continue;
 
                 spdlog::info("synced on seq {} for all cameras", maxSeq);
+                maxSeq++;
 
                 // Here we have make sure the stereo have the same sequence number. According to
                 // OAK, this ensures synchronisation
 
                 // initialise camera_info msgs if needed
-                if (leftCameraInfo.width != left->getWidth()) {
+                if (leftCameraInfo.width == 0 || rightCameraInfo.width == 0) {
                     spdlog::info("{} Initialise camera_info messages, rectification = {}",
                                  m_params.device_id,
                                  m_stereo_is_rectified ? "Enabled" : "Disabled");
@@ -541,6 +560,8 @@ void OakRos::run() {
 
                 lastPublishedSeq = seqLeft;
 
+                spdlog::info("checking timestamp");
+
                 double tsLeft =
                     left.get() ? left->getTimestamp().time_since_epoch().count() / 1.0e9 : 0.0;
                 double tsRight =
@@ -550,12 +571,12 @@ void OakRos::run() {
                 double tsCamD =
                     camD.get() ? camD->getTimestamp().time_since_epoch().count() / 1.0e9 : 0.0;
 
-                spdlog::debug("{} left seq = {}, ts = {}", m_params.device_id, seqLeft, tsLeft);
-                spdlog::debug("{} right seq = {}, ts = {}", m_params.device_id, seqRight, tsRight);
+                spdlog::info("{} left seq = {}, ts = {}", m_params.device_id, seqLeft, tsLeft);
+                spdlog::info("{} right seq = {}, ts = {}", m_params.device_id, seqRight, tsRight);
 
                 if (runAllFourCams) {
-                    spdlog::debug("{} rgb seq = {}, ts = {}", m_params.device_id, seqRgb, tsRgb);
-                    spdlog::debug("{} camd seq = {}, ts = {}", m_params.device_id, seqCamD, tsCamD);
+                    spdlog::info("{} rgb seq = {}, ts = {}", m_params.device_id, seqRgb, tsRgb);
+                    spdlog::info("{} camd seq = {}, ts = {}", m_params.device_id, seqCamD, tsCamD);
                 }
 
                 // publish left frame and camera info
@@ -715,8 +736,11 @@ sensor_msgs::CameraInfo OakRos::getCameraInfo(std::shared_ptr<dai::ImgFrame> img
                                               dai::CameraBoardSocket socket) {
     sensor_msgs::CameraInfo info;
 
-    if (m_noCalib.count(socket))
+    if (m_noCalib.count(socket)) {
+        info.width = static_cast<uint32_t>(img->getWidth());
+        info.height = static_cast<uint32_t>(img->getHeight());
         return info;
+    }
 
     std::vector<double> flatIntrinsics, distCoeffsDouble;
 
@@ -767,9 +791,10 @@ sensor_msgs::CameraInfo OakRos::getCameraInfo(std::shared_ptr<dai::ImgFrame> img
         info.width = static_cast<uint32_t>(img->getWidth());
         info.height = static_cast<uint32_t>(img->getHeight());
 
-        // undistrotion is always done in OAK camera, so distortion coefficient should be zero always
+        // undistrotion is always done in OAK camera, so distortion coefficient should be zero
+        // always
         info.distortion_model = "opencv";
-    }catch (std::exception& e) {
+    } catch (std::exception &e) {
         spdlog::error("readCalibration() error: {}", e.what());
         m_noCalib.insert(socket);
     }
