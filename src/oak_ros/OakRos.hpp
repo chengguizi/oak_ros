@@ -13,6 +13,8 @@
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/Imu.h>
 
+#include <set>
+
 class OakRos : public OakRosInterface
 {
 public:
@@ -116,6 +118,7 @@ private:
     void depthCallback(std::shared_ptr<dai::ADatatype> data);
     void imuCallback(std::shared_ptr<dai::ADatatype> data);
 
+    std::set<dai::CameraBoardSocket> m_noCalib;
     sensor_msgs::CameraInfo getCameraInfo(std::shared_ptr<dai::ImgFrame> img, dai::CameraBoardSocket socket); // In Oak convention, right camera is the main camera
 
     // ROS related functionalities

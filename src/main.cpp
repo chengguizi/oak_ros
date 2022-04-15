@@ -12,8 +12,8 @@ inline OakRosParams getVIOParams()
     // enable raw stereo output, without depth generation
     params.enable_stereo = true;
     
-    // params.enable_rgb = true;
-    // params.enable_camD = true;
+    params.enable_rgb = true;
+    params.enable_camD = true;
 
     params.enable_imu = true;
 

@@ -1,7 +1,7 @@
 <launch>
     <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
     <arg name="vehicle" default="$(arg _uav_id)"/>
-    <arg name="resolution" default="480"/>
+    <arg name="resolution" default="400"/>
     <arg name="exposure_mode" default="auto"/>
     <arg name="shutter_speed_us" default="12000"/>
     <arg name="iso" default="600"/>
