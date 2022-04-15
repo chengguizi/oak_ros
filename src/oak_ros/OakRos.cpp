@@ -36,6 +36,8 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
 
     auto xinControl = configureControl();
 
+    // m_pipeline.setXLinkChunkSize(0);
+
     // Initialise device
     {
         dai::UsbSpeed usbSpeedMax;
@@ -377,8 +379,8 @@ void OakRos::configureStereoRgbCamD() {
 }
 
 void OakRos::setupStereoQueue() {
-    m_leftQueue = m_device->getOutputQueue("left", 5, false);
-    m_rightQueue = m_device->getOutputQueue("right", 5, false);
+    m_leftQueue = m_device->getOutputQueue("left", 10, false);
+    m_rightQueue = m_device->getOutputQueue("right", 10, false);
 
     spdlog::info("{} advertising stereo cameras in ros topics...", m_params.device_id);
 
@@ -389,7 +391,7 @@ void OakRos::setupStereoQueue() {
 }
 
 void OakRos::setupRgbQueue() {
-    m_rgbQueue = m_device->getOutputQueue("rgb", 5, false);
+    m_rgbQueue = m_device->getOutputQueue("rgb", 10, false);
 
     spdlog::info("{} advertising rgb cameras in ros topic...", m_params.device_id);
     m_rgbPub.reset(new auto(
@@ -397,7 +399,7 @@ void OakRos::setupRgbQueue() {
 }
 
 void OakRos::setupCamDQueue() {
-    m_camDQueue = m_device->getOutputQueue("camd", 5, false);
+    m_camDQueue = m_device->getOutputQueue("camd", 10, false);
 
     spdlog::info("{} advertising camd cameras in ros topic...", m_params.device_id);
     m_camDPub.reset(new auto(
