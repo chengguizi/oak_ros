@@ -11,7 +11,7 @@
 
     <node ns="$(arg vehicle)" pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
         <param name="resolution" value="$(arg resolution)"/>
-        <param name="frequency" value="5"/>
+        <param name="frequency" value="20"/>
         <param name="rates_workaround" value="false"/>
         <param name="poe_mode" value="false"/>
         <param name="only_usb2_mode" value="false"/>
@@ -24,9 +24,9 @@
         <param name="ir_laser_dot" value="$(arg ir_laser_dot)"/>
         <param name="ir_floodlight" value="$(arg ir_floodlight)"/>
         <param name="imu" value="true"/> 
-        <param name="stereo" value="true"/> 
-        <param name="rgb" value="false"/> 
-        <param name="camd" value="false"/> 
+        <param name="stereo" value="false"/> 
+        <param name="rgb" value="true"/> 
+        <param name="camd" value="true"/> 
         <param name="hardware_sync" value="true"/> 
     </node>
 </launch>

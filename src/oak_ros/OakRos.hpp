@@ -68,8 +68,6 @@ private:
     int restartCount = 0;
 
     // 1 means no throttling, only publish every N frames
-    unsigned int m_stereo_seq_throttle;
-    unsigned int lastPublishedSeq;
     double lastGyroTs;
     
     bool m_ts_align_to_right;

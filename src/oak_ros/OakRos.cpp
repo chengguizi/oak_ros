@@ -10,22 +10,11 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
     // ROS-related
     m_nh = nh;
 
-    lastPublishedSeq = 0;
     lastGyroTs = -1;
-    m_stereo_seq_throttle = 1;
 
     spdlog::info("initialising device {}", m_params.device_id);
 
     m_stereo_is_rectified = false;
-
-    if (m_params.stereo_fps_throttle) {
-        m_stereo_seq_throttle = *(m_params.stereo_fps_throttle);
-        spdlog::info("{} user code throttling images to publish every {} frames",
-                     m_params.device_id, m_stereo_seq_throttle);
-    }
-
-    if (m_params.rates_workaround)
-        configureRatesWorkaround();
 
     configureStereoRgbCamD();
 
@@ -35,7 +24,7 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
 
     auto xinControl = configureControl();
 
-    // m_pipeline.setXLinkChunkSize(0);
+    m_pipeline.setXLinkChunkSize(0);
 
     // Initialise device
     {
@@ -105,49 +94,6 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
     m_run = std::thread(&OakRos::run, this);
 }
 
-void OakRos::configureRatesWorkaround() {
-    spdlog::info("{} using rates workaround to cut framerate to half", m_params.device_id);
-
-    if (m_params.enable_stereo || m_params.enable_depth) {
-        m_scriptLeft = m_pipeline.create<dai::node::Script>();
-        m_scriptRight = m_pipeline.create<dai::node::Script>();
-        // Half the rates of all left and right images
-        m_scriptLeft->setScript(R"(
-            while True:
-                frame = node.io['frameLeft'].get()
-                if frame.getSequenceNum() % 3 == 1:
-                    node.io['streamLeft'].send(frame)
-            )");
-
-        m_scriptRight->setScript(R"(
-            while True:
-                frame = node.io['frameRight'].get()
-                if frame.getSequenceNum() % 3 == 1:
-                    node.io['streamRight'].send(frame)
-            )");
-    }
-
-    if (m_params.enable_rgb) {
-        m_scriptRgb = m_pipeline.create<dai::node::Script>();
-        m_scriptRgb->setScript(R"(
-            while True:
-                frame = node.io['frameRgb'].get()
-                if frame.getSequenceNum() % 3 == 1:
-                    node.io['streamRgb'].send(frame)
-            )");
-    }
-
-    if (m_params.enable_camD) {
-        m_scriptCamD = m_pipeline.create<dai::node::Script>();
-        m_scriptCamD->setScript(R"(
-            while True:
-                frame = node.io['frameCamD'].get()
-                if frame.getSequenceNum() % 3 == 1:
-                    node.io['streamCamD'].send(frame)
-            )");
-    }
-}
-
 std::shared_ptr<dai::node::XLinkIn> OakRos::configureControl() {
     auto xinControl = m_pipeline.create<dai::node::XLinkIn>();
     xinControl->setStreamName("control");
@@ -211,7 +157,7 @@ void OakRos::configureImu() {
     // host can receive it if lower or equal to batchReportThreshold then the sending is always
     // blocking on device useful to reduce device's CPU load  and number of lost packets, if CPU
     // load is high on device side due to multiple nodes
-    imu->setMaxBatchReports(50);
+    imu->setMaxBatchReports(28);
 
     // Link plugins IMU -> XLINK
     imu->out.link(xoutIMU->input);
@@ -219,10 +165,6 @@ void OakRos::configureImu() {
 
 void OakRos::configureStereoRgbCamD() {
     std::shared_ptr<dai::node::XLinkOut> xoutLeft, xoutRight, xoutRgb, xoutCamD;
-    xoutLeft = m_pipeline.create<dai::node::XLinkOut>();
-    xoutRight = m_pipeline.create<dai::node::XLinkOut>();
-    xoutLeft->setStreamName("left");
-    xoutRight->setStreamName("right");
 
     // configure the stereo sensors' format
     std::shared_ptr<dai::node::StereoDepth> stereoDepth;
@@ -243,12 +185,7 @@ void OakRos::configureStereoRgbCamD() {
             m_rgb->setFps(m_params.stereo_fps.value());
         }
 
-        if (m_params.rates_workaround) {
-            m_rgb->out.link(m_scriptRgb->inputs["frameRgb"]);
-            m_scriptRgb->outputs["streamRgb"].link(xoutRgb->input);
-        } else {
-            m_rgb->out.link(xoutRgb->input);
-        }
+        m_rgb->out.link(xoutRgb->input);
     }
 
     if (m_params.enable_camD) {
@@ -265,15 +202,15 @@ void OakRos::configureStereoRgbCamD() {
             m_camD->setFps(m_params.stereo_fps.value());
         }
 
-        if (m_params.rates_workaround) {
-            m_camD->out.link(m_scriptCamD->inputs["frameCamD"]);
-            m_scriptCamD->outputs["streamCamD"].link(xoutCamD->input);
-        } else {
-            m_camD->out.link(xoutCamD->input);
-        }
+        m_camD->out.link(xoutCamD->input);
     }
 
     if (m_params.enable_stereo || m_params.enable_depth) {
+
+        xoutLeft = m_pipeline.create<dai::node::XLinkOut>();
+        xoutRight = m_pipeline.create<dai::node::XLinkOut>();
+        xoutLeft->setStreamName("left");
+        xoutRight->setStreamName("right");
 
         if (m_params.stereo_resolution) {
             m_monoLeft->setResolution(m_params.stereo_resolution.value());
@@ -294,17 +231,8 @@ void OakRos::configureStereoRgbCamD() {
         if (!m_params.enable_stereo_rectified && m_params.enable_stereo && !m_params.enable_depth) {
             spdlog::info("{} enabling both only raw stereo...", m_params.device_id);
 
-            if (m_params.rates_workaround) {
-                m_monoLeft->out.link(m_scriptLeft->inputs["frameLeft"]);
-                m_scriptLeft->outputs["streamLeft"].link(xoutLeft->input);
-
-                m_monoRight->out.link(m_scriptRight->inputs["frameRight"]);
-                m_scriptRight->outputs["streamRight"].link(xoutRight->input);
-            } else {
-                m_monoLeft->out.link(xoutLeft->input);
-                m_monoRight->out.link(xoutRight->input);
-            }
-
+            m_monoLeft->out.link(xoutLeft->input);
+            m_monoRight->out.link(xoutRight->input);
         }
         // case where depth node is required
         else if (m_params.enable_depth || m_params.enable_stereo_rectified) {
@@ -328,16 +256,8 @@ void OakRos::configureStereoRgbCamD() {
             }
 
             // Linking
-            if (m_params.rates_workaround) {
-                m_monoLeft->out.link(m_scriptLeft->inputs["frameLeft"]);
-                m_scriptLeft->outputs["streamLeft"].link(stereoDepth->left);
-
-                m_monoRight->out.link(m_scriptRight->inputs["frameRight"]);
-                m_scriptRight->outputs["streamRight"].link(stereoDepth->right);
-            } else {
-                m_monoLeft->out.link(stereoDepth->left);
-                m_monoRight->out.link(stereoDepth->right);
-            }
+            m_monoLeft->out.link(stereoDepth->left);
+            m_monoRight->out.link(stereoDepth->right);
 
             // depth output stream
             if (m_params.enable_depth) {
@@ -367,13 +287,24 @@ void OakRos::configureStereoRgbCamD() {
     }
 
     if (m_params.hardware_sync) {
-        m_monoLeft->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
-        m_monoRight->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::OUTPUT);
 
-        if (m_params.enable_rgb)
-            m_rgb->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
-        if (m_params.enable_camD)
-            m_camD->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+        if (m_params.enable_stereo) {
+            m_monoLeft->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+            m_monoRight->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::OUTPUT);
+
+            if (m_params.enable_rgb)
+                m_rgb->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+            if (m_params.enable_camD)
+                m_camD->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+        }else {
+            if (m_params.enable_rgb && m_params.enable_camD){
+                m_rgb->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::OUTPUT);
+                m_camD->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+            }else {
+                // no hardware sync needed
+            }
+        }
+        
     }
 }
 
@@ -433,16 +364,22 @@ void OakRos::run() {
 
     try {
 
-        bool runAllFourCams =
-            m_leftQueue.get() && m_rightQueue.get() && m_rgbQueue.get() && m_camDQueue.get();
+        bool runRgb = m_rgbQueue.get();
+        bool runCamD = m_camDQueue.get();
+        bool runStereo = m_leftQueue.get() && m_rightQueue.get();
 
-        if (runAllFourCams)
+        if (runRgb && runCamD && runStereo)
             spdlog::info("Streaming all four cameras");
+        else {
+            if (runRgb)
+            spdlog::info("Streaming rgb");
 
-        bool runStereo = !runAllFourCams && m_leftQueue.get() && m_rightQueue.get();
-
-        if (runStereo)
-            spdlog::info("Streaming stereo cameras only");
+            if (runCamD)
+            spdlog::info("Streaming camD");
+        
+            if (runStereo)
+                spdlog::info("Streaming runStereo");
+        }
 
         long seqLeft = 0, seqRight = 0, seqRgb = 0, seqCamD = 0;
         double tsLeft = -1, tsRight = -1, tsRgb = -1, tsCamD = -1;
@@ -452,29 +389,27 @@ void OakRos::run() {
         while (m_running) {
             // process stereo data
             constexpr double deltaT = 2e-3; // 2ms trigger delay
-            if (runStereo || runAllFourCams) {
+            if (runStereo || runRgb || runCamD) {
 
                 try {
-                    while (tsLeft < maxTs - deltaT) {
+                    while (runStereo && tsLeft < maxTs - deltaT) {
                         left = m_leftQueue->get<dai::ImgFrame>();
                         tsLeft = left->getTimestamp().time_since_epoch().count() / 1.0e9;
                     }
 
-                    while (tsRight < maxTs - deltaT) {
+                    while (runStereo && tsRight < maxTs - deltaT) {
                         right = m_rightQueue->get<dai::ImgFrame>();
                         tsRight = right->getTimestamp().time_since_epoch().count() / 1.0e9;
                     }
 
-                    if (runAllFourCams) {
-                        while (tsRgb < maxTs - deltaT) {
-                            rgb = m_rgbQueue->get<dai::ImgFrame>();
-                            tsRgb = rgb->getTimestamp().time_since_epoch().count() / 1.0e9;
-                        }
+                    while (runRgb && tsRgb < maxTs - deltaT) {
+                        rgb = m_rgbQueue->get<dai::ImgFrame>();
+                        tsRgb = rgb->getTimestamp().time_since_epoch().count() / 1.0e9;
+                    }
 
-                        while (tsCamD < maxTs - deltaT) {
-                            camD = m_camDQueue->get<dai::ImgFrame>();
-                            tsCamD = camD->getTimestamp().time_since_epoch().count() / 1.0e9;
-                        }
+                    while (runCamD && tsCamD < maxTs - deltaT) {
+                        camD = m_camDQueue->get<dai::ImgFrame>();
+                        tsCamD = camD->getTimestamp().time_since_epoch().count() / 1.0e9;
                     }
 
                 } catch (std::exception &e) {
@@ -484,89 +419,92 @@ void OakRos::run() {
                     continue;
                 }
 
-                maxTs = std::max(tsLeft, tsRight);
+                maxTs = 0;
+                if (runStereo)
+                    maxTs = std::max(maxTs, std::max(tsLeft, tsRight));
 
-                if (runAllFourCams)
-                    maxTs = std::max(maxTs, std::max(tsRgb, tsCamD));
+                if (runRgb)
+                    maxTs = std::max(maxTs, tsRgb);
+
+                if (runCamD)
+                    maxTs = std::max(maxTs, tsCamD);
 
                 // if any of the sequence does not match the latest one, try again
                 bool retry = false;
-                if (maxTs - tsLeft > deltaT) {
+                if (runStereo && maxTs - tsLeft > deltaT) {
                     // seqLeft = -1;
                     retry = true;
                 }
-                if (maxTs - tsRight > deltaT) {
+                if (runStereo && maxTs - tsRight > deltaT) {
                     // seqRight = -1;
                     retry = true;
                 }
 
-                if (runAllFourCams && maxTs - tsRgb > deltaT) {
+                if (runRgb && maxTs - tsRgb > deltaT) {
                     // seqRgb = -1;
                     retry = true;
                 }
-                if (runAllFourCams && maxTs - tsCamD > deltaT) {
+                if (runCamD && maxTs - tsCamD > deltaT) {
                     // seqCamD = -1;
                     retry = true;
                 }
 
                 spdlog::debug("left = {}, right = {}, rgb = {}, camd = {}, maxSeq = {}", tsLeft,
-                             tsRight, tsRgb, tsCamD, maxTs);
+                              tsRight, tsRgb, tsCamD, maxTs);
 
                 if (m_params.hardware_sync && retry)
                     continue;
 
                 spdlog::debug("synced on ts {} for all cameras", maxTs);
-                maxTs += deltaT + deltaT; 
+                maxTs += deltaT + deltaT;
 
                 // detect for jumps
+                constexpr int frameInterval= 1;
+                
+                if (runStereo)
                 {
-                    int frameInterval;
-                    if (m_params.rates_workaround)
-                        frameInterval = 3;
-                    else
-                        frameInterval = 1;
 
                     long seqLeftNow = left->getSequenceNum();
                     long seqRightNow = right->getSequenceNum();
-                    
 
                     if (seqLeftNow - frameInterval != seqLeft)
-                        spdlog::warn("jump detected in left image frames, from {} to {}, should be to {}",
-                                    seqLeft, seqLeftNow, seqLeft + frameInterval);
-                    
+                        spdlog::warn(
+                            "jump detected in left image frames, from {} to {}, should be to {}",
+                            seqLeft, seqLeftNow, seqLeft + frameInterval);
+
                     if (seqRightNow - frameInterval != seqRight)
-                        spdlog::warn("jump detected in right image frames, from {} to {}, should be to {}",
-                                    seqRight, seqRightNow, seqRight + frameInterval);
+                        spdlog::warn(
+                            "jump detected in right image frames, from {} to {}, should be to {}",
+                            seqRight, seqRightNow, seqRight + frameInterval);
 
-                    if (m_params.enable_rgb) {
-                        long seqRgbNow = rgb->getSequenceNum();
-                        if (seqRgbNow - frameInterval != seqRgb)
-                            spdlog::warn("jump detected in rgb image frames, from {} to {}, should be to {}",
-                                        seqRgb, seqRgbNow, seqRgb + frameInterval);
-                    }
-
-                    if (m_params.enable_camD) {
-                        long seqCamDNow = camD->getSequenceNum();
-                        if (seqCamDNow - frameInterval != seqCamD)
-                            spdlog::warn("jump detected in camd image frames, from {} to {}, should be to {}",
-                                        seqCamD, seqCamDNow, seqCamD + frameInterval);
-                    }
-                    
+                    seqLeft = seqLeftNow;
+                    seqRight = seqRightNow;
                 }
 
-                seqLeft = left->getSequenceNum();
-                seqRight = right->getSequenceNum();
-
-                if (m_params.enable_rgb)
-                    seqRgb = rgb->getSequenceNum();
-                if (m_params.enable_camD)
-                    seqCamD = camD->getSequenceNum();
+                if (m_params.enable_rgb){
+                    long seqRgbNow = rgb->getSequenceNum();
+                    if (seqRgbNow - frameInterval != seqRgb)
+                        spdlog::warn(
+                            "jump detected in rgb image frames, from {} to {}, should be to {}",
+                            seqRgb, seqRgbNow, seqRgb + frameInterval);
+                    seqRgb = seqRgbNow;
+                }
+                    
+                if (m_params.enable_camD){
+                    long seqCamDNow = camD->getSequenceNum();
+                    if (seqCamDNow - frameInterval != seqCamD)
+                        spdlog::warn("jump detected in camd image frames, from {} to {}, "
+                                        "should be to {}",
+                                        seqCamD, seqCamDNow, seqCamD + frameInterval);
+                    seqCamD = seqCamDNow;
+                }
+                    
 
                 // Here we have make sure the stereo have the same sequence number. According to
                 // OAK, this ensures synchronisation
 
                 // initialise camera_info msgs if needed
-                if (leftCameraInfo.width == 0 || rightCameraInfo.width == 0) {
+                if (runStereo && leftCameraInfo.width == 0) {
                     spdlog::info("{} Initialise camera_info messages, rectification = {}",
                                  m_params.device_id,
                                  m_stereo_is_rectified ? "Enabled" : "Disabled");
@@ -575,87 +513,84 @@ void OakRos::run() {
                     leftCameraInfo = getCameraInfo(left, dai::CameraBoardSocket::LEFT);
                     rightCameraInfo = getCameraInfo(right, dai::CameraBoardSocket::RIGHT);
 
-                    if (runAllFourCams) {
-                        rgbCameraInfo = getCameraInfo(rgb, dai::CameraBoardSocket::RGB);
-                        camDCameraInfo = getCameraInfo(camD, dai::CameraBoardSocket::CAM_D);
-                    }
-                    // } else
-                    //     leftCameraInfo = getCameraInfo(
-                    //         right, dai::CameraBoardSocket::RIGHT); // after rectification in OAK,
-                    //                                                // the intrinsics of left will
-                    //                                                be
-                    //                                                // the same as the right
-                    //     rightCameraInfo = getCameraInfo(right, dai::CameraBoardSocket::RIGHT);
-                    // }
+                    
                 }
 
-                if (lastPublishedSeq != 0 && (seqLeft - lastPublishedSeq < m_stereo_seq_throttle))
-                    continue;
-
-                lastPublishedSeq = seqLeft;
+                if (runRgb && rgbCameraInfo.width == 0)
+                    rgbCameraInfo = getCameraInfo(rgb, dai::CameraBoardSocket::RGB);
+                if (runCamD && camDCameraInfo.width == 0)
+                    camDCameraInfo = getCameraInfo(camD, dai::CameraBoardSocket::CAM_D);
 
                 spdlog::debug("{} left seq = {}, ts = {}", m_params.device_id, seqLeft, tsLeft);
                 spdlog::debug("{} right seq = {}, ts = {}", m_params.device_id, seqRight, tsRight);
 
-                if (runAllFourCams) {
-                    spdlog::debug("{} rgb seq = {}, ts = {}", m_params.device_id, seqRgb, tsRgb);
-                    spdlog::debug("{} camd seq = {}, ts = {}", m_params.device_id, seqCamD, tsCamD);
-                }
+                spdlog::debug("{} rgb seq = {}, ts = {}", m_params.device_id, seqRgb, tsRgb);
+                spdlog::debug("{} camd seq = {}, ts = {}", m_params.device_id, seqCamD, tsCamD);
 
-                // publish left frame and camera info
+                if (runStereo)
                 {
-                    leftCvFrame = left->getFrame();
-
-                    if (m_params.hardware_sync && m_params.align_ts_to_right)
-                        leftCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
-                    else
-                        leftCameraInfo.header.stamp = ros::Time().fromSec(tsLeft);
-                    cv_bridge::CvImage leftBridge = cv_bridge::CvImage(
-                        leftCameraInfo.header, sensor_msgs::image_encodings::MONO8, leftCvFrame);
-
-                    m_leftPub->publish(*leftBridge.toImageMsg(), leftCameraInfo);
-                }
-
-                // publish right frame and camera info
-                {
-                    rightCvFrame = right->getFrame();
-
-                    rightCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
-                    cv_bridge::CvImage rightBridge = cv_bridge::CvImage(
-                        rightCameraInfo.header, sensor_msgs::image_encodings::MONO8, rightCvFrame);
-
-                    m_rightPub->publish(*rightBridge.toImageMsg(), rightCameraInfo);
-                }
-
-                if (runAllFourCams) {
-                    // publish rgb frame and camera info
+                    // publish left frame and camera info
                     {
-                        rgbCvFrame = rgb->getFrame();
-                        if (m_params.hardware_sync && m_params.align_ts_to_right)
-                            rgbCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
-                        else
-                            rgbCameraInfo.header.stamp = ros::Time().fromSec(tsRgb);
-                        
-                        cv_bridge::CvImage rgbBridge = cv_bridge::CvImage(
-                            rgbCameraInfo.header, sensor_msgs::image_encodings::MONO8, rgbCvFrame);
+                        leftCvFrame = left->getFrame();
 
-                        m_rgbPub->publish(*rgbBridge.toImageMsg(), rgbCameraInfo);
+                        if (m_params.hardware_sync && m_params.align_ts_to_right)
+                            leftCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
+                        else
+                            leftCameraInfo.header.stamp = ros::Time().fromSec(tsLeft);
+                        cv_bridge::CvImage leftBridge = cv_bridge::CvImage(
+                            leftCameraInfo.header, sensor_msgs::image_encodings::MONO8, leftCvFrame);
+
+                        m_leftPub->publish(*leftBridge.toImageMsg(), leftCameraInfo);
                     }
 
-                    // publish camd frame and camera info
+                    // publish right frame and camera info
                     {
-                        camDCvFrame = camD->getFrame();
-                        if (m_params.hardware_sync && m_params.align_ts_to_right)
+                        rightCvFrame = right->getFrame();
+
+                        rightCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
+                        cv_bridge::CvImage rightBridge = cv_bridge::CvImage(
+                            rightCameraInfo.header, sensor_msgs::image_encodings::MONO8, rightCvFrame);
+
+                        m_rightPub->publish(*rightBridge.toImageMsg(), rightCameraInfo);
+                    }
+                }
+                
+
+                // publish rgb frame and camera info
+                if(runRgb)
+                {
+                    rgbCvFrame = rgb->getFrame();
+                    if (m_params.hardware_sync && m_params.align_ts_to_right) {
+                        if (runStereo)
+                            rgbCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
+                    }
+                    else
+                        rgbCameraInfo.header.stamp = ros::Time().fromSec(tsRgb);
+
+                    cv_bridge::CvImage rgbBridge = cv_bridge::CvImage(
+                        rgbCameraInfo.header, sensor_msgs::image_encodings::MONO8, rgbCvFrame);
+
+                    m_rgbPub->publish(*rgbBridge.toImageMsg(), rgbCameraInfo);
+                }
+
+                // publish camd frame and camera info
+                if(runCamD)
+                {
+                    camDCvFrame = camD->getFrame();
+                    if (m_params.hardware_sync && m_params.align_ts_to_right) {
+                        if (runStereo)
                             camDCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
                         else
-                            camDCameraInfo.header.stamp = ros::Time().fromSec(tsCamD);
-
-                        cv_bridge::CvImage camDBridge =
-                            cv_bridge::CvImage(camDCameraInfo.header,
-                                               sensor_msgs::image_encodings::MONO8, camDCvFrame);
-
-                        m_camDPub->publish(*camDBridge.toImageMsg(), camDCameraInfo);
+                            camDCameraInfo.header.stamp = ros::Time().fromSec(tsRgb);
                     }
+                    else
+                        camDCameraInfo.header.stamp = ros::Time().fromSec(tsCamD);
+
+                    cv_bridge::CvImage camDBridge =
+                        cv_bridge::CvImage(camDCameraInfo.header,
+                                            sensor_msgs::image_encodings::MONO8, camDCvFrame);
+
+                    m_camDPub->publish(*camDBridge.toImageMsg(), camDCameraInfo);
                 }
 
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));

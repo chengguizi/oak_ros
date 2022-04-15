@@ -27,7 +27,6 @@
  * @param enable_imu boolean to enable imu stream
  * @param imu_frequency the frequency IMU should sample upon
  * 
- * @param rates_workaround boolean to enable framerates halfing, on-device
  * @param align_ts_to_right boolean to enable copy the exact ts of right camera to the left camera
  * 
  * @param manual_exposure optional parameter to set manual exposure
@@ -51,7 +50,6 @@ struct OakRosParams
     std::optional<dai::MonoCameraProperties::SensorResolution> stereo_resolution = {}; // dai::MonoCameraProperties::SensorResolution::THE_480_P
 
     std::optional<float> stereo_fps = {};
-    std::optional<int> stereo_fps_throttle = {};
 
     bool enable_depth = true;
     bool enable_depth_pointcloud = false;
@@ -65,7 +63,6 @@ struct OakRosParams
     bool enable_imu = false;
     int imu_frequency = 100;
 
-    bool rates_workaround = false;
     bool align_ts_to_right = true;
 
     std::optional<int> manual_exposure; // 1 - 33000
