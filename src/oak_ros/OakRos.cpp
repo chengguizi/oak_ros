@@ -403,6 +403,13 @@ void OakRos::run() {
                 spdlog::debug("{} left seq = {}, ts = {}", m_params.device_id, seqLeft, tsLeft);
                 spdlog::debug("{} right seq = {}, ts = {}", m_params.device_id, seqRight, tsRight);
 
+                double deltaTs = std::abs(tsLeft - tsRight);
+                if (deltaTs > 2.0e-3) // 1ms
+                {
+                    spdlog::error("left ({}) and right ({}) out of sync by {}", seqLeft, seqRight, deltaTs);
+                    std::runtime_error("");
+                }
+
                 // publish left frame and camera info
                 {
                     leftCvFrame = left->getFrame();
