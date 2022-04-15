@@ -463,7 +463,11 @@ void OakRos::run() {
 
                     while (seqRight < maxSeq) {
                         right = m_rightQueue->get<dai::ImgFrame>();
-                        seqRight = right->getSequenceNum();
+                        // hm: workaround for fixing sync time for hardware synchronisation
+                        if (m_params.hardware_sync)
+                            seqRight = right->getSequenceNum() + 1;
+                        else
+                            seqRight = right->getSequenceNum();
                     }
 
                     if (runAllFourCams) {
