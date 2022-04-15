@@ -445,40 +445,36 @@ void OakRos::run() {
         if (runStereo)
             spdlog::info("Streaming stereo cameras only");
 
-        long seqLeft = -1, seqRight = -1, seqRgb = -1, seqCamD = -1;
-        long maxSeq = 0;
+        long seqLeft, seqRight, seqRgb, seqCamD;
+        double tsLeft = -1, tsRight = -1, tsRgb = -1, tsCamD = -1;
+        double maxTs = 0;
 
         std::shared_ptr<dai::ImgFrame> left, right, rgb, camD;
         while (m_running) {
             // process stereo data
-
+            constexpr double deltaT = 2e-3; // 2ms trigger delay
             if (runStereo || runAllFourCams) {
 
                 try {
-
-                    while (seqLeft < maxSeq) {
+                    while (tsLeft < maxTs - deltaT) {
                         left = m_leftQueue->get<dai::ImgFrame>();
-                        seqLeft = left->getSequenceNum();
+                        tsLeft = left->getTimestamp().time_since_epoch().count() / 1.0e9;
                     }
 
-                    while (seqRight < maxSeq) {
+                    while (tsRight < maxTs - deltaT) {
                         right = m_rightQueue->get<dai::ImgFrame>();
-                        // hm: workaround for fixing sync time for hardware synchronisation
-                        if (m_params.hardware_sync)
-                            seqRight = right->getSequenceNum() + 1;
-                        else
-                            seqRight = right->getSequenceNum();
+                        tsRight = right->getTimestamp().time_since_epoch().count() / 1.0e9;
                     }
 
                     if (runAllFourCams) {
-                        while (seqRgb < maxSeq) {
+                        while (tsRgb < maxTs - deltaT) {
                             rgb = m_rgbQueue->get<dai::ImgFrame>();
-                            seqRgb = rgb->getSequenceNum();
+                            tsRgb = rgb->getTimestamp().time_since_epoch().count() / 1.0e9;
                         }
 
-                        while (seqCamD < maxSeq) {
+                        while (tsCamD < maxTs - deltaT) {
                             camD = m_camDQueue->get<dai::ImgFrame>();
-                            seqCamD = camD->getSequenceNum();
+                            tsCamD = camD->getTimestamp().time_since_epoch().count() / 1.0e9;
                         }
                     }
 
@@ -489,39 +485,44 @@ void OakRos::run() {
                     continue;
                 }
 
-                maxSeq = std::max(seqLeft, seqRight);
+                maxTs = std::max(tsLeft, tsRight);
 
                 if (runAllFourCams)
-                    maxSeq = std::max(maxSeq, std::max(seqRgb, seqCamD));
+                    maxTs = std::max(maxTs, std::max(tsRgb, tsCamD));
 
                 // if any of the sequence does not match the latest one, try again
                 bool retry = false;
-                if (seqLeft != maxSeq) {
+                if (maxTs - tsLeft > deltaT) {
                     // seqLeft = -1;
                     retry = true;
                 }
-                if (seqRight != maxSeq) {
+                if (maxTs - tsRight > deltaT) {
                     // seqRight = -1;
                     retry = true;
                 }
 
-                if (runAllFourCams && seqRgb != maxSeq) {
+                if (runAllFourCams && maxTs - tsRgb > deltaT) {
                     // seqRgb = -1;
                     retry = true;
                 }
-                if (runAllFourCams && seqCamD != maxSeq) {
+                if (runAllFourCams && maxTs - tsCamD > deltaT) {
                     // seqCamD = -1;
                     retry = true;
                 }
 
-                spdlog::info("left = {}, right = {}, rgb = {}, camd = {}, maxSeq = {}", seqLeft,
-                             seqRight, seqRgb, seqCamD, maxSeq);
+                spdlog::info("left = {}, right = {}, rgb = {}, camd = {}, maxSeq = {}", tsLeft,
+                             tsRight, tsRgb, tsCamD, maxTs);
 
                 if (m_params.hardware_sync && retry)
                     continue;
 
-                spdlog::info("synced on seq {} for all cameras", maxSeq);
-                maxSeq++;
+                spdlog::info("synced on ts {} for all cameras", maxTs);
+                maxTs += deltaT + deltaT; 
+
+                seqLeft = left->getSequenceNum();
+                seqRight = right->getSequenceNum();
+                seqRgb = rgb->getSequenceNum();
+                seqCamD = camD->getSequenceNum();
 
                 // Here we have make sure the stereo have the same sequence number. According to
                 // OAK, this ensures synchronisation
@@ -568,15 +569,6 @@ void OakRos::run() {
 
                 spdlog::info("checking timestamp");
 
-                double tsLeft =
-                    left.get() ? left->getTimestamp().time_since_epoch().count() / 1.0e9 : 0.0;
-                double tsRight =
-                    right.get() ? right->getTimestamp().time_since_epoch().count() / 1.0e9 : 0.0;
-                double tsRgb =
-                    rgb.get() ? rgb->getTimestamp().time_since_epoch().count() / 1.0e9 : 0.0;
-                double tsCamD =
-                    camD.get() ? camD->getTimestamp().time_since_epoch().count() / 1.0e9 : 0.0;
-
                 spdlog::info("{} left seq = {}, ts = {}", m_params.device_id, seqLeft, tsLeft);
                 spdlog::info("{} right seq = {}, ts = {}", m_params.device_id, seqRight, tsRight);
 
@@ -589,7 +581,7 @@ void OakRos::run() {
                 {
                     leftCvFrame = left->getFrame();
 
-                    if (m_params.align_ts_to_right)
+                    if (m_params.hardware_sync && m_params.align_ts_to_right)
                         leftCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
                     else
                         leftCameraInfo.header.stamp = ros::Time().fromSec(tsLeft);
@@ -614,8 +606,11 @@ void OakRos::run() {
                     // publish rgb frame and camera info
                     {
                         rgbCvFrame = rgb->getFrame();
-
-                        rgbCameraInfo.header.stamp = ros::Time().fromSec(tsRgb);
+                        if (m_params.hardware_sync && m_params.align_ts_to_right)
+                            rgbCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
+                        else
+                            rgbCameraInfo.header.stamp = ros::Time().fromSec(tsRgb);
+                        
                         cv_bridge::CvImage rgbBridge = cv_bridge::CvImage(
                             rgbCameraInfo.header, sensor_msgs::image_encodings::MONO8, rgbCvFrame);
 
@@ -625,8 +620,11 @@ void OakRos::run() {
                     // publish camd frame and camera info
                     {
                         camDCvFrame = camD->getFrame();
+                        if (m_params.hardware_sync && m_params.align_ts_to_right)
+                            camDCameraInfo.header.stamp = ros::Time().fromSec(tsRight);
+                        else
+                            camDCameraInfo.header.stamp = ros::Time().fromSec(tsCamD);
 
-                        camDCameraInfo.header.stamp = ros::Time().fromSec(tsCamD);
                         cv_bridge::CvImage camDBridge =
                             cv_bridge::CvImage(camDCameraInfo.header,
                                                sensor_msgs::image_encodings::MONO8, camDCvFrame);
