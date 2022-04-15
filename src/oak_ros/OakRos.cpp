@@ -206,12 +206,12 @@ void OakRos::configureImu() {
 
     // above this threshold packets will be sent in batch of X, if the host is not blocked and USB
     // bandwidth is available
-    imu->setBatchReportThreshold(5);
+    imu->setBatchReportThreshold(20);
     // maximum number of IMU packets in a batch, if it's reached device will block sending until
     // host can receive it if lower or equal to batchReportThreshold then the sending is always
     // blocking on device useful to reduce device's CPU load  and number of lost packets, if CPU
     // load is high on device side due to multiple nodes
-    imu->setMaxBatchReports(20);
+    imu->setMaxBatchReports(50);
 
     // Link plugins IMU -> XLINK
     imu->out.link(xoutIMU->input);
