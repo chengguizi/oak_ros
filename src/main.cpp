@@ -5,25 +5,9 @@
 
 // Preset good for indoor calibration
 
-inline OakRosParams getVIOParams()
-{
-    OakRosParams params;
-
-    // enable raw stereo output, without depth generation
-    params.enable_stereo = true;
-    
-    params.enable_rgb = true;
-    params.enable_camD = true;
-
-    params.enable_imu = true;
-
-    return params;
-}
-
 OakRosParams getIndoorLightingParams()
 {
-    auto params = getVIOParams();
-
+    OakRosParams params;
     params.manual_exposure = 2000; // in usec
     params.manual_iso = 200; // 100 to 1600
 
@@ -33,8 +17,7 @@ OakRosParams getIndoorLightingParams()
 // preset that good for indoor low light
 OakRosParams getLowLightParams()
 {
-    auto params = getVIOParams();
-
+    OakRosParams params;
     params.manual_exposure = 8000; // in usec
     params.manual_iso = 1600; // 100 to 1600
 
@@ -65,6 +48,11 @@ int main(int argc, char **argv)
     int option_exposure_compensation;
     int option_ir_laser_dot;
     int option_ir_floodlight;
+    bool option_imu;
+    bool option_stereo;
+    bool option_rgb;
+    bool option_camd;
+    bool option_hardware_sync;
 
 
     nh_local.param<int>("frequency", option_frequency, -1);
@@ -81,6 +69,11 @@ int main(int argc, char **argv)
     nh_local.param<bool>("rates_workaround", option_rates_workaround, true);
     nh_local.param<bool>("poe_mode", option_poe_mode, false);
     nh_local.param<bool>("only_usb2_mode", option_only_usb2_mode, false);
+    nh_local.param<bool>("imu", option_imu, true);
+    nh_local.param<bool>("stereo", option_stereo, true);
+    nh_local.param<bool>("rgb", option_rgb, false);
+    nh_local.param<bool>("camd", option_camd, false);
+    nh_local.param<bool>("hardware_sync", option_hardware_sync, true);
 
 
 
@@ -114,15 +107,13 @@ int main(int argc, char **argv)
         constexpr unsigned int FULL_FPS = 30;
         {
             if(option_exposure_mode == "auto")
-                params = getVIOParams();
+                ;
             else if (option_exposure_mode == "low-light")
                 params = getLowLightParams();
             else if (option_exposure_mode == "indoor")
                 params = getIndoorLightingParams();
             else if (option_exposure_mode == "manual")
             {
-                params = getVIOParams();
-
                 params.manual_exposure = option_shutter_speed_us; // in usec
                 params.manual_iso = option_iso; // 100 to 1600
             }
@@ -163,7 +154,13 @@ int main(int argc, char **argv)
         params.enable_stereo_rectified = option_rectified;
         params.enable_mesh_dir = option_mesh_dir;
 
-        params.hardware_sync = true;
+        params.enable_stereo = option_stereo;
+        params.enable_rgb = option_rgb;
+        params.enable_camD = option_camd;
+
+        params.enable_imu = option_imu;
+
+        params.hardware_sync = option_hardware_sync;
 
         if (option_resolution == 480)
             params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_480_P;

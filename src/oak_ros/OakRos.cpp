@@ -11,7 +11,6 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
     m_nh = nh;
 
     lastPublishedSeq = 0;
-    lastSeq = 0;
     lastGyroTs = -1;
     m_stereo_seq_throttle = 1;
 
@@ -445,7 +444,7 @@ void OakRos::run() {
         if (runStereo)
             spdlog::info("Streaming stereo cameras only");
 
-        long seqLeft, seqRight, seqRgb, seqCamD;
+        long seqLeft = 0, seqRight = 0, seqRgb = 0, seqCamD = 0;
         double tsLeft = -1, tsRight = -1, tsRgb = -1, tsCamD = -1;
         double maxTs = 0;
 
@@ -510,19 +509,58 @@ void OakRos::run() {
                     retry = true;
                 }
 
-                spdlog::info("left = {}, right = {}, rgb = {}, camd = {}, maxSeq = {}", tsLeft,
+                spdlog::debug("left = {}, right = {}, rgb = {}, camd = {}, maxSeq = {}", tsLeft,
                              tsRight, tsRgb, tsCamD, maxTs);
 
                 if (m_params.hardware_sync && retry)
                     continue;
 
-                spdlog::info("synced on ts {} for all cameras", maxTs);
+                spdlog::debug("synced on ts {} for all cameras", maxTs);
                 maxTs += deltaT + deltaT; 
+
+                // detect for jumps
+                {
+                    int frameInterval;
+                    if (m_params.rates_workaround)
+                        frameInterval = 3;
+                    else
+                        frameInterval = 1;
+
+                    long seqLeftNow = left->getSequenceNum();
+                    long seqRightNow = right->getSequenceNum();
+                    
+
+                    if (seqLeftNow - frameInterval != seqLeft)
+                        spdlog::warn("jump detected in left image frames, from {} to {}, should be to {}",
+                                    seqLeft, seqLeftNow, seqLeft + frameInterval);
+                    
+                    if (seqRightNow - frameInterval != seqRight)
+                        spdlog::warn("jump detected in right image frames, from {} to {}, should be to {}",
+                                    seqRight, seqRightNow, seqRight + frameInterval);
+
+                    if (m_params.enable_rgb) {
+                        long seqRgbNow = rgb->getSequenceNum();
+                        if (seqRgbNow - frameInterval != seqRgb)
+                            spdlog::warn("jump detected in rgb image frames, from {} to {}, should be to {}",
+                                        seqRgb, seqRgbNow, seqRgb + frameInterval);
+                    }
+
+                    if (m_params.enable_camD) {
+                        long seqCamDNow = camD->getSequenceNum();
+                        if (seqCamDNow - frameInterval != seqCamD)
+                            spdlog::warn("jump detected in camd image frames, from {} to {}, should be to {}",
+                                        seqCamD, seqCamDNow, seqCamD + frameInterval);
+                    }
+                    
+                }
 
                 seqLeft = left->getSequenceNum();
                 seqRight = right->getSequenceNum();
-                seqRgb = rgb->getSequenceNum();
-                seqCamD = camD->getSequenceNum();
+
+                if (m_params.enable_rgb)
+                    seqRgb = rgb->getSequenceNum();
+                if (m_params.enable_camD)
+                    seqCamD = camD->getSequenceNum();
 
                 // Here we have make sure the stereo have the same sequence number. According to
                 // OAK, this ensures synchronisation
@@ -551,30 +589,17 @@ void OakRos::run() {
                     // }
                 }
 
-                int frameInterval;
-                if (m_params.rates_workaround)
-                    frameInterval = 3;
-                else
-                    frameInterval = 1;
-
-                if (lastSeq && seqLeft - frameInterval != lastSeq)
-                    spdlog::warn("jump detected in image frames, from {} to {}, should be to {}",
-                                 lastSeq, seqLeft, lastSeq + frameInterval);
-                lastSeq = seqLeft;
-
                 if (lastPublishedSeq != 0 && (seqLeft - lastPublishedSeq < m_stereo_seq_throttle))
                     continue;
 
                 lastPublishedSeq = seqLeft;
 
-                spdlog::info("checking timestamp");
-
-                spdlog::info("{} left seq = {}, ts = {}", m_params.device_id, seqLeft, tsLeft);
-                spdlog::info("{} right seq = {}, ts = {}", m_params.device_id, seqRight, tsRight);
+                spdlog::debug("{} left seq = {}, ts = {}", m_params.device_id, seqLeft, tsLeft);
+                spdlog::debug("{} right seq = {}, ts = {}", m_params.device_id, seqRight, tsRight);
 
                 if (runAllFourCams) {
-                    spdlog::info("{} rgb seq = {}, ts = {}", m_params.device_id, seqRgb, tsRgb);
-                    spdlog::info("{} camd seq = {}, ts = {}", m_params.device_id, seqCamD, tsCamD);
+                    spdlog::debug("{} rgb seq = {}, ts = {}", m_params.device_id, seqRgb, tsRgb);
+                    spdlog::debug("{} camd seq = {}, ts = {}", m_params.device_id, seqCamD, tsCamD);
                 }
 
                 // publish left frame and camera info
@@ -633,10 +658,6 @@ void OakRos::run() {
                     }
                 }
 
-                seqLeft = -1;
-                seqRight = -1;
-                seqRgb = -1;
-                seqCamD = -1;
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
 
             } else
