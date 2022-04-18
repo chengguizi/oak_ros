@@ -5,7 +5,7 @@
     <arg name="exposure_mode" default="auto"/>
     <arg name="shutter_speed_us" default="12000"/>
     <arg name="iso" default="600"/>
-    <arg name="exposure_compensation" default="-4"/>
+    <arg name="exposure_compensation" default="0"/>
     <arg name="ir_laser_dot" default="0"/>
     <arg name="ir_floodlight" default="0"/>
 
@@ -24,7 +24,7 @@
         <param name="ir_laser_dot" value="$(arg ir_laser_dot)"/>
         <param name="ir_floodlight" value="$(arg ir_floodlight)"/>
         <param name="imu" value="true"/> 
-        <param name="stereo" value="false"/> 
+        <param name="stereo" value="true"/> 
         <param name="rgb" value="true"/> 
         <param name="camd" value="true"/> 
         <param name="hardware_sync" value="true"/> 
