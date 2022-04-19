@@ -1,5 +1,5 @@
 <launch>
-    <arg name="resolution" default="480"/>
+    <arg name="resolution" default="400"/>
     <arg name="exposure_mode" default="calibration"/>
 
     <node pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
@@ -9,5 +9,11 @@
         <param name="mesh_dir" type ="string" value=""/> 
         <param name="rectified" value="false"/> 
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
+        <param name="imu" value="false"/> 
+        <param name="stereo" value="true"/> 
+        <param name="rgb" value="true"/> 
+        <param name="camd" value="true"/> 
+        <param name="hardware_sync" value="true"/> 
+        <param name="debug_opencv_image" value="true"/> 
     </node>
 </launch>
