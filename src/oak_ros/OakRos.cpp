@@ -81,10 +81,10 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
     if (m_params.enable_camD)
         setupCamDQueue();
 
-    if (m_params.debug_opencv_images) {
-        m_debugImagePub.reset(new auto(
-        m_imageTransport->advertiseCamera(m_params.topic_name + "/debug_images", 3)));
-    }
+    // if (m_params.debug_opencv_images) {
+    //     m_debugImagePub.reset(new auto(
+    //     m_imageTransport->advertiseCamera(m_params.topic_name + "/debug_images", 3)));
+    // }
 
     if (m_params.enable_depth) {
         m_depthQueue = m_device->getOutputQueue("depth", 2, false);
@@ -390,6 +390,11 @@ void OakRos::run() {
         double tsLeft = -1, tsRight = -1, tsRgb = -1, tsCamD = -1;
         double maxTs = 0;
 
+        if (m_params.debug_opencv_images){
+            cv::namedWindow("debug image", cv::WINDOW_NORMAL);
+        }
+            
+
         std::shared_ptr<dai::ImgFrame> left, right, rgb, camD;
         while (m_running) {
             // process stereo data
@@ -635,13 +640,14 @@ void OakRos::run() {
                     else
                         info.header.stamp = ros::Time().fromSec(tsRgb);
 
-                    cv_bridge::CvImage debugBridge =
-                        cv_bridge::CvImage(info.header,
-                                            sensor_msgs::image_encodings::MONO8, debugImage);
+                    // cv_bridge::CvImage debugBridge =
+                    //     cv_bridge::CvImage(info.header,
+                    //                         sensor_msgs::image_encodings::MONO8, debugImage);
 
-                    m_debugImagePub->publish(*debugBridge.toImageMsg(), info);
+                    // m_debugImagePub->publish(*debugBridge.toImageMsg(), info);
 
                     cv::imshow("debug image", debugImage);
+                    cv::resizeWindow("debug image", 1000, 280);
                     cv::waitKey(3);
                 }
 
