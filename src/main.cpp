@@ -46,6 +46,7 @@ int main(int argc, char **argv) {
     bool option_rgb;
     bool option_camd;
     bool option_hardware_sync;
+    bool option_debug_opencv_image;
 
     nh_local.param<int>("frequency", option_frequency, -1);
     nh_local.param<int>("resolution", option_resolution, 480);
@@ -65,6 +66,7 @@ int main(int argc, char **argv) {
     nh_local.param<bool>("rgb", option_rgb, false);
     nh_local.param<bool>("camd", option_camd, false);
     nh_local.param<bool>("hardware_sync", option_hardware_sync, true);
+    nh_local.param<bool>("debug_opencv_image", option_debug_opencv_image, true);
 
     auto device_ids = OakRosFactory::getAllAvailableDeviceIds();
 
@@ -139,6 +141,8 @@ int main(int argc, char **argv) {
         params.enable_imu = option_imu;
 
         params.hardware_sync = option_hardware_sync;
+
+        params.debug_opencv_images = option_debug_opencv_image;
 
         if (option_resolution == 480)
             params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_480_P;

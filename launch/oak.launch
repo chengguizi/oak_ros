@@ -28,5 +28,6 @@
         <param name="rgb" value="true"/> 
         <param name="camd" value="true"/> 
         <param name="hardware_sync" value="true"/> 
+        <param name="debug_opencv_image" value="false"/> 
     </node>
 </launch>

@@ -81,6 +81,11 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
     if (m_params.enable_camD)
         setupCamDQueue();
 
+    if (m_params.debug_opencv_images) {
+        m_debugImagePub.reset(new auto(
+        m_imageTransport->advertiseCamera(m_params.topic_name + "/debug_images", 3)));
+    }
+
     if (m_params.enable_depth) {
         m_depthQueue = m_device->getOutputQueue("depth", 2, false);
     }
@@ -591,6 +596,53 @@ void OakRos::run() {
                                             sensor_msgs::image_encodings::MONO8, camDCvFrame);
 
                     m_camDPub->publish(*camDBridge.toImageMsg(), camDCameraInfo);
+                }
+
+                if (m_params.debug_opencv_images) {
+                    cv::Mat debugImage;
+
+                    if (runRgb) {
+                        if (debugImage.empty())
+                            debugImage = rgbCvFrame.clone();
+                        else
+                            cv::hconcat(debugImage, rgbCvFrame, debugImage);
+                    }
+
+                    if (runStereo) {
+
+                        if (debugImage.empty())
+                            cv::hconcat(leftCvFrame, rightCvFrame, debugImage);
+                        else {
+                            cv::hconcat(debugImage, leftCvFrame, debugImage);
+                            cv::hconcat(debugImage, rightCvFrame, debugImage);
+                        }
+                            
+                    }
+
+                    if (runCamD) {
+                        if (debugImage.empty())
+                            debugImage = camDCvFrame.clone();
+                        else
+                            cv::hconcat(debugImage, camDCvFrame, debugImage);
+                    }
+
+                    sensor_msgs::CameraInfo info;
+                    info.width = debugImage.cols;
+                    info.height = debugImage.rows;
+                    
+                    if (m_params.align_ts_to_right)
+                        info.header.stamp = ros::Time().fromSec(tsRight);
+                    else
+                        info.header.stamp = ros::Time().fromSec(tsRgb);
+
+                    cv_bridge::CvImage debugBridge =
+                        cv_bridge::CvImage(info.header,
+                                            sensor_msgs::image_encodings::MONO8, debugImage);
+
+                    m_debugImagePub->publish(*debugBridge.toImageMsg(), info);
+
+                    cv::imshow("debug image", debugImage);
+                    cv::waitKey(3);
                 }
 
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));

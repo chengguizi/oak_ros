@@ -73,6 +73,8 @@ struct OakRosParams
     int ir_floodlight = 0; // in mA: 0 - 1500
 
     bool enable_apriltag = false;
+
+    bool debug_opencv_images = false;
 };
 
 class OakRosInterface

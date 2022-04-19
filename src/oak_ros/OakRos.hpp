@@ -121,7 +121,7 @@ private:
     // ROS related functionalities
     ros::NodeHandle m_nh;
     std::shared_ptr<image_transport::ImageTransport> m_imageTransport;
-    std::shared_ptr<image_transport::CameraPublisher> m_leftPub, m_rightPub, m_rgbPub, m_camDPub;
+    std::shared_ptr<image_transport::CameraPublisher> m_leftPub, m_rightPub, m_rgbPub, m_camDPub, m_debugImagePub;
     std::shared_ptr<ros::Publisher> m_imuPub;
 
 };
