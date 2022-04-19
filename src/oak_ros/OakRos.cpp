@@ -631,14 +631,14 @@ void OakRos::run() {
                             cv::hconcat(debugImage, camDCvFrame, debugImage);
                     }
 
-                    sensor_msgs::CameraInfo info;
-                    info.width = debugImage.cols;
-                    info.height = debugImage.rows;
+                    // sensor_msgs::CameraInfo info;
+                    // info.width = debugImage.cols;
+                    // info.height = debugImage.rows;
                     
-                    if (m_params.align_ts_to_right)
-                        info.header.stamp = ros::Time().fromSec(tsRight);
-                    else
-                        info.header.stamp = ros::Time().fromSec(tsRgb);
+                    // if (runStereo && m_params.align_ts_to_right)
+                    //     info.header.stamp = ros::Time().fromSec(tsRight);
+                    // else if (runRgb && m_params.align_ts_to_right)
+                    //     info.header.stamp = ros::Time().fromSec(tsRgb);
 
                     // cv_bridge::CvImage debugBridge =
                     //     cv_bridge::CvImage(info.header,
