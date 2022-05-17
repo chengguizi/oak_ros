@@ -160,11 +160,10 @@ void OakRos::configureImu() {
     xoutIMU->setStreamName("imu");
 
     // enable ACCELEROMETER_RAW and GYROSCOPE_RAW
-    // TODO: seems ACCELEROMETER_RAW has orientation X-Y wrong
-    imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER_RAW, dai::IMUSensor::GYROSCOPE_RAW},
-    m_params.imu_frequency);
-    // imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER, dai::IMUSensor::GYROSCOPE_CALIBRATED},
-                        //  m_params.imu_frequency);
+    // imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER_RAW, dai::IMUSensor::GYROSCOPE_RAW},
+    // m_params.imu_frequency);
+    imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER, dai::IMUSensor::GYROSCOPE_CALIBRATED},
+                         m_params.imu_frequency);
 
     // above this threshold packets will be sent in batch of X, if the host is not blocked and USB
     // bandwidth is available
