@@ -31,7 +31,7 @@ catkin_package(# INCLUDE_DIRS LIBRARIES CATKIN_DEPENDS imu_vn_100 DEPENDS
 )
 
 # Finding depthai dependencies
-set(depthai_DIR "/home/$ENV{USER}/git/depthai-core/build/install/lib/cmake/depthai")
+set(depthai_DIR "/home/$ENV{USER}/git/depthai-core-multicam/build/install/lib/cmake/depthai")
 
 find_package(depthai CONFIG REQUIRED)
 if(depthai_FOUND)
