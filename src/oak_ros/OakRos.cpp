@@ -323,20 +323,32 @@ void OakRos::run() {
     cv::Mat leftCvFrame, rightCvFrame;
     sensor_msgs::CameraInfo leftCameraInfo, rightCameraInfo;
 
+    long seqLeft = 0, seqRight = 0;
+    double tsLeft = -1, tsRight = -1;
+    double maxTs = 0;
+
+    int frameInterval = m_params.rates_workaround ? 3 : 1;
+
     try {
+
+        std::shared_ptr<dai::ImgFrame> left, right;
         while (m_running) {
             // process stereo data
-            if (m_leftQueue.get() && m_rightQueue.get()) {
-                unsigned int seqLeft, seqRight;
-
-                std::shared_ptr<dai::ImgFrame> left, right;
+            constexpr double deltaT = 2e-3; // 2ms trigger delay
+            if (m_leftQueue.get() && m_rightQueue.get()) {                
 
                 try {
-                    left = m_leftQueue->get<dai::ImgFrame>();
-                    seqLeft = left->getSequenceNum();
 
-                    right = m_rightQueue->get<dai::ImgFrame>();
-                    seqRight = right->getSequenceNum();
+                    while (tsLeft < maxTs - deltaT) {
+                        left = m_leftQueue->get<dai::ImgFrame>();
+                        tsLeft = left->getTimestamp().time_since_epoch().count() / 1.0e9;
+                    }
+
+                    while (tsRight < maxTs - deltaT) {
+                        right = m_rightQueue->get<dai::ImgFrame>();
+                        tsRight = right->getTimestamp().time_since_epoch().count() / 1.0e9;
+                    }
+
                 } catch (std::exception &e) {
                     spdlog::warn("get() for left or right image failed: {}", e.what());
                     m_watchdog = std::thread(&OakRos::restart, this);
@@ -344,26 +356,46 @@ void OakRos::run() {
                     continue;
                 }
 
-                try {
-                    while (seqRight != seqLeft) {
-                        spdlog::warn(
-                            "sequence number mismatch, skip frame. seqLeft = {}, seqRight = {}",
-                            seqLeft, seqRight);
+                maxTs = 0;
+                maxTs = std::max(maxTs, std::max(tsLeft, tsRight));
 
-                        if (seqRight < seqLeft) {
-                            right = m_rightQueue->get<dai::ImgFrame>();
-                            seqRight = right->getSequenceNum();
-                        } else {
-                            left = m_leftQueue->get<dai::ImgFrame>();
-                            seqLeft = left->getSequenceNum();
-                        }
-                    }
-                } catch (std::exception &e) {
-                    spdlog::warn("get() for aligning left or right image seq failed: {}", e.what());
-                    m_watchdog = std::thread(&OakRos::restart, this);
-                    m_running = false;
-                    continue;
+                bool retry = false;
+                if (maxTs - tsLeft > deltaT) {
+                    // seqLeft = -1;
+                    retry = true;
                 }
+
+                if (maxTs - tsRight > deltaT) {
+                    // seqRight = -1;
+                    retry = true;
+                }
+
+                if (retry)
+                    continue;
+
+                maxTs += deltaT + deltaT;
+
+                
+
+                {
+                    long seqLeftNow = left->getSequenceNum();
+                    long seqRightNow = right->getSequenceNum();
+
+                    if (seqLeftNow - frameInterval != seqLeft)
+                        spdlog::warn(
+                            "jump detected in left image frames, from {} to {}, should be to {}",
+                            seqLeft, seqLeftNow, seqLeft + frameInterval);
+
+                    if (seqRightNow - frameInterval != seqRight)
+                        spdlog::warn(
+                            "jump detected in right image frames, from {} to {}, should be to {}",
+                            seqRight, seqRightNow, seqRight + frameInterval);
+
+                    seqLeft = seqLeftNow;
+                    seqRight = seqRightNow;
+                }
+
+                
 
                 // Here we have make sure the stereo have the same sequence number. According to
                 // OAK, this ensures synchronisation
@@ -387,10 +419,10 @@ void OakRos::run() {
                     }
                 }
 
-                if (lastSeq && seqLeft - 3 != lastSeq)
-                    spdlog::warn("jump detected in image frames, from {} to {}, should be to {}",
-                                 lastSeq, seqLeft, lastSeq + 3);
-                lastSeq = seqLeft;
+                // if (lastSeq && seqLeft - 3 != lastSeq)
+                //     spdlog::warn("jump detected in image frames, from {} to {}, should be to {}",
+                //                  lastSeq, seqLeft, lastSeq + 3);
+                // lastSeq = seqLeft;
 
                 if (lastPublishedSeq != 0 && (seqLeft - lastPublishedSeq < m_stereo_seq_throttle))
                     continue;
