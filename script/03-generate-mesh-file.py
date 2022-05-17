@@ -208,7 +208,7 @@ xoutRectifLeft = pipeline.create(dai.node.XLinkOut)
 xoutRectifRight = pipeline.create(dai.node.XLinkOut)
 
 camLeft.setBoardSocket(dai.CameraBoardSocket.LEFT)
-camRight.setBoardSocket(dai.CameraBoardSocket.RIGHT)
+camRight.setBoardSocket(dai.CameraBoardSocket.RGB)
 res = (
     dai.MonoCameraProperties.SensorResolution.THE_800_P
     if resolution[1] == 800
