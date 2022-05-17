@@ -294,8 +294,8 @@ void OakRos::configureStereoRgbCamD() {
     if (m_params.hardware_sync) {
 
         if (m_params.enable_stereo) {
-            m_monoLeft->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
-            m_monoRight->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::OUTPUT);
+            m_monoLeft->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::OUTPUT);
+            m_monoRight->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
 
             if (m_params.enable_rgb)
                 m_rgb->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
