@@ -5,6 +5,88 @@
 
 #include <cv_bridge/cv_bridge.h>
 
+std::vector<sensor_msgs::Imu>
+ImuInterpolation::updatePacket(const dai::IMUReportAccelerometer &accel,
+                               const dai::IMUReportGyroscope &gyro) {
+    if (m_accelHist.size() == 0 || m_accelHist.back().sequence != accel.sequence) {
+        m_accelHist.push_back(accel);
+    }
+
+    if (m_gyroHist.size() == 0 || m_gyroHist.back().sequence != gyro.sequence) {
+        m_gyroHist.push_back(gyro);
+    }
+
+    // interpolate accelerometer measurement to align to gyro
+
+    std::vector<sensor_msgs::Imu> ret;
+
+    while (m_accelHist.size() >= 3) {
+        dai::IMUReportAccelerometer accel0, accel1;
+        dai::IMUReportGyroscope currGyro;
+
+        accel0 = m_accelHist.front();
+        m_accelHist.pop_front();
+        accel1 = m_accelHist.front();
+
+        const double accel0Ts = accel0.timestamp.get().time_since_epoch().count() / 1.0e9;
+        const double accel1Ts = accel1.timestamp.get().time_since_epoch().count() / 1.0e9;
+
+        // sanity check for regression
+
+        if (accel0Ts >= accel1Ts) {
+            spdlog::warn("accelerometer ts regression detected: {} -> {}", accel0Ts, accel1Ts);
+            continue;
+        } else if (accel1Ts - accel0Ts > 3.0 / m_imuFrequency) {
+            spdlog::warn("large gap between accel measurements, dt = {}, dropping",
+                         accel1Ts - accel0Ts);
+            continue;
+        }
+
+        if (m_gyroHist.size() == 0)
+            spdlog::warn("No gyro message left for interpolation, shouldn't happen");
+
+        while (m_gyroHist.size()) {
+            currGyro = m_gyroHist.front();
+            const double gyroTs = currGyro.timestamp.get().time_since_epoch().count() / 1.0e9;
+
+            // if gyro reading is more recent than accel1, abort
+            if (gyroTs > accel1Ts)
+                break;
+            else if (gyroTs < accel0Ts) {
+                spdlog::warn("stray gyro measurement found at {}, older than oldest accel "
+                             "measurement {}, dropping",
+                             gyroTs, accel0Ts);
+                break;
+            }
+
+            spdlog::debug(
+                "imu interploation: from accel0 {} ({}) and accel1 {} ({}) to gyro {} ({})",
+                accel0.sequence, accel0Ts, accel1.sequence, accel1Ts, currGyro.sequence, gyroTs);
+
+            const double alpha = (gyroTs - accel0Ts) / (accel1Ts - accel0Ts);
+            dai::IMUReportAccelerometer interpAccel = lerpImu(accel0, accel1, alpha);
+
+            sensor_msgs::Imu imuMsg;
+            imuMsg.header.frame_id = "imu";
+            imuMsg.header.stamp = ros::Time().fromSec(gyroTs);
+
+            imuMsg.angular_velocity.x = currGyro.x;
+            imuMsg.angular_velocity.y = currGyro.y;
+            imuMsg.angular_velocity.z = currGyro.z;
+
+            imuMsg.linear_acceleration.x = interpAccel.x;
+            imuMsg.linear_acceleration.y = interpAccel.y;
+            imuMsg.linear_acceleration.z = interpAccel.z;
+
+            ret.push_back(imuMsg);
+
+            m_gyroHist.pop_front();
+        }
+    }
+
+    return ret;
+}
+
 void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
 
     m_params = params;
@@ -142,10 +224,16 @@ void OakRos::configureImu() {
 
     // enable ACCELEROMETER_RAW and GYROSCOPE_RAW
     // TODO: seems ACCELEROMETER_RAW has orientation X-Y wrong
-    imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER_RAW, dai::IMUSensor::GYROSCOPE_RAW},
-                         m_params.imu_frequency);
-    // imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER, dai::IMUSensor::GYROSCOPE_CALIBRATED},
-    //  m_params.imu_frequency);
+
+    if (m_params.imu_use_raw) {
+        spdlog::info("IMU is taking raw (unfiltered) values from sensor");
+        imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER_RAW, dai::IMUSensor::GYROSCOPE_RAW},
+                             m_params.imu_frequency);
+    } else {
+        spdlog::info("IMU is taking filtered values from sensor");
+        imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER, dai::IMUSensor::GYROSCOPE_CALIBRATED},
+                             m_params.imu_frequency);
+    }
 
     // above this threshold packets will be sent in batch of X, if the host is not blocked and USB
     // bandwidth is available
@@ -452,63 +540,74 @@ void OakRos::imuCallback(std::shared_ptr<dai::ADatatype> data) {
         spdlog::info("{} received first IMU message!", m_params.device_id);
     }
 
+    if (!imuInterpolation.get()) {
+        imuInterpolation.reset(new ImuInterpolation(m_params.imu_frequency));
+    }
+
     auto imuPackets = imuData->packets;
     for (auto &imuPacket : imuPackets) {
         auto &acceleroValues = imuPacket.acceleroMeter;
         auto &gyroValues = imuPacket.gyroscope;
 
-        double acceleroTs = acceleroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
-        double gyroTs = gyroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
+        spdlog::debug("accel seq = {}, gyro seq = {}", acceleroValues.sequence,
+                      gyroValues.sequence);
 
-        spdlog::debug("{} imu accel ts = {}", m_params.device_id, acceleroTs);
-        spdlog::debug("{} imu gyro ts = {}", m_params.device_id, gyroTs);
+        constexpr bool do_interpolation = true;
 
-        sensor_msgs::Imu imuMsg;
-        // TODO: here we assume to align with gyro timestamp
-        bool errorDetect = false;
-        if (std::abs(acceleroTs - gyroTs) > 0.015) {
-            spdlog::warn("{} large ts difference between gyro and accel reading detected = {}",
-                         m_params.device_id, std::abs(acceleroTs - gyroTs));
-            errorDetect = true;
-        }
+        if (!do_interpolation) {
+            double acceleroTs = acceleroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
+            double gyroTs = gyroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
 
-        if (lastGyroTs > 0) {
-            // check if the timestamp is regressing
+            spdlog::info("{} imu accel ts = {}", m_params.device_id, acceleroTs);
+            spdlog::info("{} imu gyro ts = {}", m_params.device_id, gyroTs);
 
-            if (gyroTs <= lastGyroTs) {
-                spdlog::warn("{} gyro ts regressing detected {} -> {}", m_params.device_id,
-                             lastGyroTs, gyroTs);
+            sensor_msgs::Imu imuMsg;
+            // TODO: here we assume to align with gyro timestamp
+            bool errorDetect = false;
+            if (std::abs(acceleroTs - gyroTs) > 0.015) {
+                spdlog::warn("{} large ts difference between gyro and accel reading detected = {}",
+                             m_params.device_id, std::abs(acceleroTs - gyroTs));
                 errorDetect = true;
             }
 
-            if (gyroTs > lastGyroTs + 0.1) {
-                spdlog::warn("{} gyro ts jump detected {} -> {}", m_params.device_id, lastGyroTs,
-                             gyroTs);
-                errorDetect = true;
+            if (lastGyroTs > 0) {
+                // check if the timestamp is regressing
+
+                if (gyroTs <= lastGyroTs) {
+                    spdlog::warn("{} gyro ts regressing detected {} -> {}", m_params.device_id,
+                                 lastGyroTs, gyroTs);
+                    errorDetect = true;
+                }
+
+                if (gyroTs > lastGyroTs + 0.1) {
+                    spdlog::warn("{} gyro ts jump detected {} -> {}", m_params.device_id,
+                                 lastGyroTs, gyroTs);
+                    errorDetect = true;
+                }
+            }
+            lastGyroTs = gyroTs;
+
+            if (!errorDetect) {
+                imuMsg.header.frame_id = "imu";
+                imuMsg.header.stamp = ros::Time().fromSec(gyroTs);
+
+                imuMsg.angular_velocity.x = gyroValues.x;
+                imuMsg.angular_velocity.y = gyroValues.y;
+                imuMsg.angular_velocity.z = gyroValues.z;
+
+                imuMsg.linear_acceleration.x = acceleroValues.x;
+                imuMsg.linear_acceleration.y = acceleroValues.y;
+                imuMsg.linear_acceleration.z = acceleroValues.z;
+
+                m_imuPub->publish(imuMsg);
+            }
+        } else {
+            auto imuMsgs = imuInterpolation->updatePacket(acceleroValues, gyroValues);
+
+            for (auto &imuMsg : imuMsgs) {
+                m_imuPub->publish(imuMsg);
             }
         }
-        lastGyroTs = gyroTs;
-
-        if (!errorDetect) {
-            imuMsg.header.stamp = ros::Time().fromSec(gyroTs);
-
-            imuMsg.angular_velocity.x = gyroValues.x;
-            imuMsg.angular_velocity.y = gyroValues.y;
-            imuMsg.angular_velocity.z = gyroValues.z;
-
-            imuMsg.linear_acceleration.x = acceleroValues.x;
-            imuMsg.linear_acceleration.y = acceleroValues.y;
-            imuMsg.linear_acceleration.z = acceleroValues.z;
-
-            m_imuPub->publish(imuMsg);
-        }
-
-        // printf("Accelerometer timestamp: %ld ms\n",
-        // static_cast<long>(acceleroTs.time_since_epoch().count())); printf("Accelerometer [m/s^2]:
-        // x: %.3f y: %.3f z: %.3f \n", acceleroValues.x, acceleroValues.y, acceleroValues.z);
-        // printf("Gyroscope timestamp: %ld ms\n",
-        // static_cast<long>(gyroTs.time_since_epoch().count())); printf("Gyroscope [rad/s]: x: %.3f
-        // y: %.3f z: %.3f \n", gyroValues.x, gyroValues.y, gyroValues.z);
     }
 }
 

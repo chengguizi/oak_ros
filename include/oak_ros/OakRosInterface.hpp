@@ -58,6 +58,7 @@ struct OakRosParams {
 
     bool enable_imu = false;
     int imu_frequency = 100;
+    bool imu_use_raw = false;
 
     std::optional<int> manual_exposure; // 1 - 33000
     std::optional<int> manual_iso;      // 100 - 1600

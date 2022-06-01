@@ -68,6 +68,7 @@ int main(int argc, char **argv) {
     int option_ir_laser_dot;
     int option_ir_floodlight;
     int option_imu_frequency;
+    bool option_imu_use_raw;
     bool option_imu;
     bool option_left;
     bool option_right;
@@ -89,6 +90,7 @@ int main(int argc, char **argv) {
     nh_local.param<int>("ir_laser_dot", option_ir_laser_dot, 0);
     nh_local.param<int>("ir_floodlight", option_ir_floodlight, 0);
     nh_local.param<int>("imu_frequency", option_imu_frequency, 200);
+    nh_local.param<bool>("imu_use_raw", option_imu_use_raw, false);
     nh_local.param<bool>("poe_mode", option_poe_mode, false);
     nh_local.param<bool>("only_usb2_mode", option_only_usb2_mode, false);
     nh_local.param<bool>("imu", option_imu, true);
@@ -172,6 +174,7 @@ int main(int argc, char **argv) {
 
         params.enable_imu = option_imu;
         params.imu_frequency = option_imu_frequency;
+        params.imu_use_raw = option_imu_use_raw;
 
         params.hardware_sync = option_hardware_sync;
 

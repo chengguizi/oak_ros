@@ -15,6 +15,30 @@
 
 #include <set>
 
+class ImuInterpolation {
+  public:
+    ImuInterpolation(int imuFrequency) : m_imuFrequency(imuFrequency) {};
+    std::vector<sensor_msgs::Imu> updatePacket(const dai::IMUReportAccelerometer &accel,
+                                                 const dai::IMUReportGyroscope &gyro);
+
+  private:
+    int m_imuFrequency;
+    std::deque<dai::IMUReportAccelerometer> m_accelHist;
+    std::deque<dai::IMUReportGyroscope> m_gyroHist;
+
+    template <typename T> T lerp(const T &a, const T &b, const double t) {
+        return a * (1.0 - t) + b * t;
+    }
+
+    template <typename T> T lerpImu(const T &a, const T &b, const double t) {
+        T res;
+        res.x = lerp(a.x, b.x, t);
+        res.y = lerp(a.y, b.y, t);
+        res.z = lerp(a.z, b.z, t);
+        return res;
+    }
+};
+
 class OakRos : public OakRosInterface {
   public:
     void init(const ros::NodeHandle &nh, const OakRosParams &params);
@@ -120,4 +144,5 @@ class OakRos : public OakRosInterface {
     std::shared_ptr<image_transport::ImageTransport> m_imageTransport;
     std::map<std::string, std::shared_ptr<image_transport::CameraPublisher>> m_cameraPubMap;
     std::shared_ptr<ros::Publisher> m_imuPub;
+    std::shared_ptr<ImuInterpolation> imuInterpolation;
 };
