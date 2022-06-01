@@ -29,6 +29,7 @@
         <param name="left" value="true"/>
         <param name="right" value="false"/> 
         <param name="camd" value="false"/>
+        <param name="imu_frequency" value="200"/> 
         <param name="depth_left_right" value="false"/>
         <param name="depth_rgb_camd" value="false"/>
         <param name="hardware_sync" value="true"/> 
