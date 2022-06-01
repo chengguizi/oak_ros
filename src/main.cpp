@@ -21,6 +21,31 @@ OakRosParams getLowLightParams() {
     return params;
 }
 
+void configureResolution(OakRosParams &params, const int option_resolution) {
+
+    dai::MonoCameraProperties::SensorResolution target;
+
+    if (option_resolution == 480)
+        target = dai::MonoCameraProperties::SensorResolution::THE_480_P;
+    else if (option_resolution == 400)
+        target = dai::MonoCameraProperties::SensorResolution::THE_400_P;
+    else if (option_resolution == 720)
+        target = dai::MonoCameraProperties::SensorResolution::THE_720_P;
+    else if (option_resolution == 800)
+        target = dai::MonoCameraProperties::SensorResolution::THE_800_P;
+    else
+        throw std::runtime_error("Undefined resolution specified");
+
+    if (params.enable_left)
+        params.resolutionMap["left"] = target;
+    if (params.enable_right)
+        params.resolutionMap["right"] = target;
+    if (params.enable_rgb)
+        params.resolutionMap["rgb"] = target;
+    if (params.enable_camD)
+        params.resolutionMap["camd"] = target;
+}
+
 int main(int argc, char **argv) {
     // spdlog::set_level(spdlog::level::debug);
 
@@ -31,9 +56,10 @@ int main(int argc, char **argv) {
     int option_frequency;
     int option_resolution;
     std::string option_exposure_mode;
-    bool option_depth;
-    std::string option_mesh_dir;
-    bool option_rectified;
+    bool option_depth_left_right;
+    bool option_depth_rgb_camd;
+    // std::string option_mesh_dir;
+    // bool option_rectified;
     bool option_poe_mode;
     bool option_only_usb2_mode;
     int option_shutter_speed_us;
@@ -42,7 +68,8 @@ int main(int argc, char **argv) {
     int option_ir_laser_dot;
     int option_ir_floodlight;
     bool option_imu;
-    bool option_stereo;
+    bool option_left;
+    bool option_right;
     bool option_rgb;
     bool option_camd;
     bool option_hardware_sync;
@@ -50,9 +77,10 @@ int main(int argc, char **argv) {
 
     nh_local.param<int>("frequency", option_frequency, -1);
     nh_local.param<int>("resolution", option_resolution, 480);
-    nh_local.param<bool>("depth", option_depth, false);
-    nh_local.param<std::string>("mesh_dir", option_mesh_dir, "");
-    nh_local.param<bool>("rectified", option_rectified, true);
+    nh_local.param<bool>("depth_left_right", option_depth_left_right, false);
+    nh_local.param<bool>("depth_rgb_camd", option_depth_rgb_camd, false);
+    // nh_local.param<std::string>("mesh_dir", option_mesh_dir, "");
+    // nh_local.param<bool>("rectified", option_rectified, true);
     nh_local.param<std::string>("exposure_mode", option_exposure_mode, "auto");
     nh_local.param<int>("shutter_speed_us", option_shutter_speed_us, 1000);
     nh_local.param<int>("iso", option_iso, 300);
@@ -62,7 +90,8 @@ int main(int argc, char **argv) {
     nh_local.param<bool>("poe_mode", option_poe_mode, false);
     nh_local.param<bool>("only_usb2_mode", option_only_usb2_mode, false);
     nh_local.param<bool>("imu", option_imu, true);
-    nh_local.param<bool>("stereo", option_stereo, true);
+    nh_local.param<bool>("left", option_left, true);
+    nh_local.param<bool>("right", option_right, true);
     nh_local.param<bool>("rgb", option_rgb, false);
     nh_local.param<bool>("camd", option_camd, false);
     nh_local.param<bool>("hardware_sync", option_hardware_sync, true);
@@ -116,7 +145,7 @@ int main(int argc, char **argv) {
             }
 
             if (option_frequency > 0) {
-                params.stereo_fps = option_frequency;
+                params.all_cameras_fps = option_frequency;
             }
         }
 
@@ -126,15 +155,16 @@ int main(int argc, char **argv) {
 
         params.only_usb2_mode = option_only_usb2_mode;
 
-        params.enable_depth = option_depth;
+        params.enable_depth_left_right = option_depth_left_right;
+        params.enable_depth_rgb_camd = option_depth_rgb_camd;
 
         params.device_id = id;
         params.topic_name = "oak" + std::to_string(topic_name_seq);
 
-        params.enable_stereo_rectified = option_rectified;
-        params.enable_mesh_dir = option_mesh_dir;
+        // params.enable_mesh_dir = option_mesh_dir;
 
-        params.enable_stereo = option_stereo;
+        params.enable_left = option_left;
+        params.enable_right = option_right;
         params.enable_rgb = option_rgb;
         params.enable_camD = option_camd;
 
@@ -144,16 +174,7 @@ int main(int argc, char **argv) {
 
         params.debug_opencv_images = option_debug_opencv_image;
 
-        if (option_resolution == 480)
-            params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_480_P;
-        else if (option_resolution == 400)
-            params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_400_P;
-        else if (option_resolution == 720)
-            params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_720_P;
-        else if (option_resolution == 800)
-            params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_800_P;
-        else
-            throw std::runtime_error("Undefined resolution specified");
+        configureResolution(params, option_resolution);
 
         handler->init(nh_local, params);
 
