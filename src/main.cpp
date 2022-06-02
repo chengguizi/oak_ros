@@ -165,6 +165,8 @@ int main(int argc, char **argv)
             params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_400_P;
         else if(option_resolution == 720)
             params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_720_P;
+        else if(option_resolution == 800)
+            params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_800_P;
         else
             throw std::runtime_error("Undefined resolution specified");
 
