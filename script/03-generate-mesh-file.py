@@ -127,7 +127,7 @@ def getMesh(calibData):
     print(R1)
     print(R2)
 
-
+    print("Mesh assumes perspective camera Type")
     # mapXL, mapYL = cv2.initUndistortRectifyMap(M1, d1, R1, M2, resolution, cv2.CV_32FC1)
     # mapXR, mapYR = cv2.initUndistortRectifyMap(M2, d2, R2, M2, resolution, cv2.CV_32FC1)
 

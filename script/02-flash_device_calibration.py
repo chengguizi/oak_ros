@@ -43,7 +43,8 @@ with dai.Device() as device:
 
     calibData = dai.CalibrationHandler()
 
-    calibData.setBoardInfo("BW1098OBC", "R0M0E0")
+    # calibData.setBoardInfo("BW1098OBC", "R0M0E0")
+    # calibData.setBoardInfo("OAK-D-LITE", "R0M0E0")
 
     eepromData = calibData.getEepromData()
 
@@ -73,7 +74,7 @@ with dai.Device() as device:
 
 
     leftId = dai.CameraBoardSocket.LEFT # 1
-    rightId = dai.CameraBoardSocket.RGB # 2
+    rightId = dai.CameraBoardSocket.RIGHT # 2
 
     # left2Id = dai.CameraBoardSocket.CAM_D # 1
     # right2Id = dai.CameraBoardSocket.RIGHT # 2
@@ -110,8 +111,8 @@ with dai.Device() as device:
 
     # STEP 3 - extrinsic
 
-    left_T_right = np.array(kalibrYaml['cam1']['T_cn_cnm1'])
-    right_T_left = np.linalg.inv(left_T_right)
+    right_T_left = np.array(kalibrYaml['cam1']['T_cn_cnm1'])
+    # right_T_left = np.linalg.inv(left_T_right)
 
     leftR, leftt = getRt(right_T_left)
     # rightR, rightt = getRt()
@@ -120,11 +121,14 @@ with dai.Device() as device:
     print(leftR)
     print(leftt)
 
-    # calibData.setCameraExtrinsics(leftId, rightId, leftR, leftt, [-7.5,0,0])
+    calibData.setCameraExtrinsics(leftId, rightId, leftR, leftt, [-7.5,0,0])
     # 4 camera front
-    calibData.setCameraExtrinsics(leftId, rightId, leftR, leftt, [-7.75,0.625,-2.8])
+    # calibData.setCameraExtrinsics(leftId, rightId, leftR, leftt, [-7.75,0.625,-2.8])
 
     # calibData.setCameraExtrinsics(left2Id, right2Id, leftR, leftt, [-7.75,0.625,-2.8])
+
+    calibData.setFov(leftId, 72.9)
+    calibData.setFov(rightId, 72.9)
 
     # STEP 4 - rectification
 
