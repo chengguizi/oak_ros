@@ -8,7 +8,7 @@
     <arg name="exposure_compensation" default="0"/>
     <arg name="ir_laser_dot" default="0"/>
     <arg name="ir_floodlight" default="0"/>
-    <arg name="debug_opencv_image" default="true"/>
+    <arg name="debug_opencv_image" default="false"/>
 
     <node ns="$(arg vehicle)" pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
         <param name="resolution" value="$(arg resolution)"/>
