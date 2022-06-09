@@ -1,0 +1,37 @@
+<launch>
+    <arg name="resolution" default="400"/>
+    <arg name="exposure_mode" default="manual"/>
+    <arg name="shutter_speed_us" default="1400"/>
+    <arg name="iso" default="200"/>
+    <arg name="exposure_compensation" default="0"/>
+    <arg name="ir_laser_dot" default="0"/>
+    <arg name="ir_floodlight" default="0"/>
+    <arg name="debug_opencv_image" default="true"/>
+
+    <node pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
+        <param name="resolution" value="$(arg resolution)"/>
+        <param name="frequency" value="30"/>
+        <param name="rates_workaround" value="false"/>
+        <param name="poe_mode" value="false"/>
+        <param name="only_usb2_mode" value="true"/>
+        <!-- <param name="mesh_dir" type ="string" value="$(find oak_ros)/data"/>  -->
+        <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
+        <param name="shutter_speed_us" value="$(arg shutter_speed_us)"/>
+        <param name="iso" value="$(arg iso)"/>
+        <param name="exposure_compensation" value="$(arg exposure_compensation)"/>
+        <param name="rectified" value="false"/> 
+        <param name="ir_laser_dot" value="$(arg ir_laser_dot)"/>
+        <param name="ir_floodlight" value="$(arg ir_floodlight)"/>
+        <param name="imu" value="true"/> 
+        <param name="rgb" value="true"/>
+        <param name="left" value="true"/>
+        <param name="right" value="false"/> 
+        <param name="camd" value="false"/>
+        <param name="imu_frequency" value="200"/>
+        <param name="imu_use_raw" value="false"/> 
+        <param name="depth_left_right" value="false"/>
+        <param name="depth_rgb_camd" value="false"/>
+        <param name="hardware_sync" value="true"/> 
+        <param name="debug_opencv_image" value="$(arg debug_opencv_image)"/> 
+    </node>
+</launch>

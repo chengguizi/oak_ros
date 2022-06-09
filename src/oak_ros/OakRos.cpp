@@ -319,6 +319,13 @@ void OakRos::configureCameras() {
             m_masterCamera = "left";
         }
 
+        if (m_masterCamera.empty() && m_cameraMap.count("camd")) {
+            spdlog::info("setting camd camera as master");
+            m_cameraMap.at("camd")->initialControl.setFrameSyncMode(
+                dai::CameraControl::FrameSyncMode::OUTPUT);
+            m_masterCamera = "camd";
+        }
+
         if (m_masterCamera.empty())
             throw std::runtime_error("no master camera configured!");
     }
