@@ -56,7 +56,9 @@ ImuInterpolation::updatePacket(const dai::IMUReportAccelerometer &accel,
                 spdlog::warn("stray gyro measurement found at {}, older than oldest accel "
                              "measurement {}, dropping",
                              gyroTs, accel0Ts);
-                break;
+                // we would like to throw away such a reading, and start again
+                m_gyroHist.pop_front();
+                continue;
             }
 
             spdlog::debug(
