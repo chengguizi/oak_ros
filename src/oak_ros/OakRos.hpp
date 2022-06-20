@@ -79,7 +79,7 @@ private:
     dai::Pipeline m_pipeline;
 
     std::shared_ptr<dai::Device> m_device;
-    std::shared_ptr<dai::DataOutputQueue> m_leftQueue, m_rightQueue, m_depthQueue, m_rgbQueue, m_imuQueue;
+    std::shared_ptr<dai::DataOutputQueue> m_leftQueue, m_rightQueue, m_depthQueue, m_disparityQueue, m_rgbQueue, m_imuQueue;
 
     std::shared_ptr<dai::DataInputQueue> m_controlQueue;
 
@@ -109,6 +109,7 @@ private:
     void setupStereoQueue();
 
     void depthCallback(std::shared_ptr<dai::ADatatype> data);
+    void disparityCallback(std::shared_ptr<dai::ADatatype> data);
     void imuCallback(std::shared_ptr<dai::ADatatype> data);
 
     sensor_msgs::CameraInfo getCameraInfo(std::shared_ptr<dai::ImgFrame> img, dai::CameraBoardSocket socket); // In Oak convention, right camera is the main camera

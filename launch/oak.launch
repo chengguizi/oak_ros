@@ -13,8 +13,10 @@
         <param name="resolution" value="$(arg resolution)"/>
         <param name="frequency" value="15"/>
         <param name="poe_mode" value="false"/>
+        <param name="depth" value="false"/>
+        <param name="disparity" value="true"/>
         <param name="only_usb2_mode" value="true"/>
-        <param name="mesh_dir" type ="string" value="$(find oak_ros)/data"/> 
+        <param name="mesh_dir" type ="string" value=""/> 
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
         <param name="shutter_speed_us" value="$(arg shutter_speed_us)"/>
         <param name="iso" value="$(arg iso)"/>

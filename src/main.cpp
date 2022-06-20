@@ -51,6 +51,7 @@ int main(int argc, char **argv)
     int option_resolution;
     std::string option_exposure_mode;
     bool option_depth;
+    bool option_disparity;
     std::string option_mesh_dir;
     bool option_rectified;
     bool option_rates_workaround;
@@ -66,6 +67,7 @@ int main(int argc, char **argv)
     nh_local.param<int>("frequency", option_frequency, -1);
     nh_local.param<int>("resolution", option_resolution, 480);
     nh_local.param<bool>("depth", option_depth, false);
+    nh_local.param<bool>("disparity", option_disparity, false);
     nh_local.param<std::string>("mesh_dir", option_mesh_dir, "");
     nh_local.param<bool>("rectified", option_rectified, true);
     nh_local.param<std::string>("exposure_mode", option_exposure_mode, "auto");
@@ -151,6 +153,7 @@ int main(int argc, char **argv)
         params.only_usb2_mode = option_only_usb2_mode;
 
         params.enable_depth = option_depth;
+        params.enable_disparity = option_disparity;
         
         params.device_id = id;
         params.topic_name = "oak" + std::to_string(topic_name_seq);

@@ -20,7 +20,7 @@
  * @param stereo_fps_throttle optional parameter to specify framerate by using on-device script for frame dropping
  * 
  * @param enable_depth boolean to enable depth stream (TODO: not yet implemented)
- * @param enable_depth_pointcloud TODO: not yet implemented
+ * @param enable_disparity boolean to enable disparity stream
  * 
  * @param enable_rgb boolean to enable rgb stream (TODO: not yet implemented)
  * @param rgb_resolution optional parameter to specify the preferred rgb resolution
@@ -53,8 +53,8 @@ struct OakRosParams
     std::optional<float> stereo_fps = {};
     std::optional<int> stereo_fps_throttle = {};
 
-    bool enable_depth = true;
-    bool enable_depth_pointcloud = false;
+    bool enable_depth = false;
+    bool enable_disparity = false;
     // dai::StereoDepthProperties
 
     bool enable_rgb = false;

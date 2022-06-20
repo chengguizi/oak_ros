@@ -88,6 +88,10 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
         m_depthQueue = m_device->getOutputQueue("depth", 2, false);
     }
 
+    if (m_params.enable_disparity) {
+        m_disparityQueue = m_device->getOutputQueue("disparity", 2, false);
+    }
+
     if (m_params.enable_imu) {
         m_imuQueue = m_device->getOutputQueue("imu", 50, false);
     }
@@ -190,7 +194,7 @@ void OakRos::configureStereo() {
     m_monoLeft = m_pipeline.create<dai::node::MonoCamera>();
     m_monoRight = m_pipeline.create<dai::node::MonoCamera>();
 
-    if (m_params.enable_stereo || m_params.enable_depth) {
+    if (m_params.enable_stereo || m_params.enable_depth || m_params.enable_disparity) {
 
         if (m_params.stereo_resolution) {
             m_monoLeft->setResolution(m_params.stereo_resolution.value());
@@ -208,7 +212,7 @@ void OakRos::configureStereo() {
         }
 
         // case where no depth node is required
-        if (!m_params.enable_stereo_rectified && m_params.enable_stereo && !m_params.enable_depth) {
+        if (!m_params.enable_stereo_rectified && m_params.enable_stereo && !m_params.enable_depth && !m_params.enable_disparity) {
             spdlog::info("{} enabling both only raw stereo...", m_params.device_id);
 
             if (m_params.rates_workaround) {
@@ -224,7 +228,7 @@ void OakRos::configureStereo() {
 
         }
         // case where depth node is required
-        else if (m_params.enable_depth || m_params.enable_stereo_rectified) {
+        else if (m_params.enable_depth || m_params.enable_disparity || m_params.enable_stereo_rectified) {
             stereoDepth = m_pipeline.create<dai::node::StereoDepth>();
             stereoDepth->setDefaultProfilePreset(dai::node::StereoDepth::PresetMode::HIGH_DENSITY);
             stereoDepth->setRectifyEdgeFillColor(0); // black, to better see the cutout
@@ -262,6 +266,13 @@ void OakRos::configureStereo() {
                 auto xoutDepth = m_pipeline.create<dai::node::XLinkOut>();
                 xoutDepth->setStreamName("depth");
                 stereoDepth->depth.link(xoutDepth->input);
+            }
+
+            if (m_params.enable_disparity) {
+                spdlog::info("{} enabling disparity stream...", m_params.device_id);
+                auto xoutDisparity = m_pipeline.create<dai::node::XLinkOut>();
+                xoutDisparity->setStreamName("disparity");
+                stereoDepth->disparity.link(xoutDisparity->input);
             }
 
             // stereo rectified will need depth node
@@ -305,12 +316,18 @@ void OakRos::run() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     spdlog::info("{} OakRos running now", m_params.device_id);
 
-    dai::DataOutputQueue::CallbackId depthCallbackId, imuCallbackId;
+    dai::DataOutputQueue::CallbackId depthCallbackId, disparityCallbackId, imuCallbackId;
 
     if (m_depthQueue.get()) {
         spdlog::info("{} adds depth queue callback", m_params.device_id);
         depthCallbackId = m_depthQueue->addCallback(
             std::bind(&OakRos::depthCallback, this, std::placeholders::_1));
+    }
+
+    if (m_disparityQueue.get()) {
+        spdlog::info("{} adds disparity queue callback", m_params.device_id);
+        disparityCallbackId = m_disparityQueue->addCallback(
+            std::bind(&OakRos::disparityCallback, this, std::placeholders::_1));
     }
 
     if (m_imuQueue.get()) {
@@ -478,6 +495,9 @@ void OakRos::run() {
     if (m_depthQueue.get())
         m_depthQueue->removeCallback(depthCallbackId);
 
+    if (m_disparityQueue.get())
+        m_disparityQueue->removeCallback(disparityCallbackId);
+
     if (m_imuQueue.get())
         m_imuQueue->removeCallback(imuCallbackId);
 
@@ -490,7 +510,24 @@ void OakRos::depthCallback(std::shared_ptr<dai::ADatatype> data) {
     unsigned int seq = depthFrame->getSequenceNum();
     double ts = depthFrame->getTimestamp().time_since_epoch().count() / 1.0e9;
 
-    spdlog::debug("{} depth seq = {}, ts = {}", m_params.device_id, seq, ts);
+    spdlog::info("{} depth seq = {}, ts = {}", m_params.device_id, seq, ts);
+}
+
+void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
+    std::shared_ptr<dai::ImgFrame> disparityFrame = std::static_pointer_cast<dai::ImgFrame>(data);
+
+    unsigned int seq = disparityFrame->getSequenceNum();
+    double ts = disparityFrame->getTimestamp().time_since_epoch().count() / 1.0e9;
+
+    spdlog::info("{} disparity seq = {}, ts = {}", m_params.device_id, seq, ts);
+
+    if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW8) {
+        spdlog::info("raw 8 type");
+    }else if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW16) {
+        spdlog::info("raw 16 type");
+    }else {
+        spdlog::info("type : {}", disparityFrame->getType());
+    }
 }
 
 void OakRos::imuCallback(std::shared_ptr<dai::ADatatype> data) {
