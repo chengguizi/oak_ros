@@ -24,8 +24,9 @@
         <param name="ir_laser_dot" value="$(arg ir_laser_dot)"/>
         <param name="ir_floodlight" value="$(arg ir_floodlight)"/>
         <param name="imu" value="false"/> 
-        <param name="stereo" value="true"/> 
         <param name="rgb" value="true"/> 
+        <param name="left" value="true"/> 
+        <param name="right" value="true"/> 
         <param name="camd" value="true"/> 
         <param name="hardware_sync" value="true"/> 
         <param name="debug_opencv_image" value="true"/> 
