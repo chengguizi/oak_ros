@@ -1,7 +1,7 @@
 <launch>
     <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
     <arg name="vehicle" default="$(arg _uav_id)"/>
-    <arg name="resolution" default="480"/>
+    <arg name="resolution" default="720"/>
     <arg name="exposure_mode" default="auto"/>
     <arg name="shutter_speed_us" default="12000"/>
     <arg name="iso" default="600"/>
@@ -16,7 +16,7 @@
         <param name="depth" value="false"/>
         <param name="disparity" value="true"/>
         <param name="only_usb2_mode" value="true"/>
-        <param name="mesh_dir" type ="string" value=""/> 
+        <!-- <param name="mesh_dir" type ="string" value="$(find oak_ros)/data"/>  -->
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
         <param name="shutter_speed_us" value="$(arg shutter_speed_us)"/>
         <param name="iso" value="$(arg iso)"/>

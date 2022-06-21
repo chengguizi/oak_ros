@@ -234,9 +234,10 @@ void OakRos::configureStereo() {
             stereoDepth->setRectifyEdgeFillColor(0); // black, to better see the cutout
             // stereoDepth->setInputResolution(1280, 720);
             stereoDepth->initialConfig.setMedianFilter(dai::MedianFilter::KERNEL_5x5);
-            stereoDepth->setLeftRightCheck(false);
-            stereoDepth->setExtendedDisparity(false);
+            stereoDepth->setLeftRightCheck(true);
+            stereoDepth->setExtendedDisparity(true);
             stereoDepth->setSubpixel(false);
+            stereoDepth->useHomographyRectification(false);
 
             // Load Mesh Data
             if (m_params.enable_mesh_dir.empty())
@@ -515,14 +516,59 @@ void OakRos::depthCallback(std::shared_ptr<dai::ADatatype> data) {
 
 void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
     std::shared_ptr<dai::ImgFrame> disparityFrame = std::static_pointer_cast<dai::ImgFrame>(data);
+    
+    if (!m_disparityPub.get()) {
+        m_disparityPub.reset(
+            new auto(m_nh.advertise<stereo_msgs::DisparityImage>(m_params.topic_name + "/disparity", 10)));
+        spdlog::info("{} received first disparity image message!", m_params.device_id);
+    }
 
     unsigned int seq = disparityFrame->getSequenceNum();
     double ts = disparityFrame->getTimestamp().time_since_epoch().count() / 1.0e9;
 
     spdlog::info("{} disparity seq = {}, ts = {}", m_params.device_id, seq, ts);
 
+    stereo_msgs::DisparityImage outDispImageMsg;
+    outDispImageMsg.header.frame_id = "right_camera_optical_frame";
+    float _focalLength = 880;
+    float _baseline = 0.075;
+    float _maxDepth = 10;
+    float _minDepth = 0.3;
+    outDispImageMsg.f = _focalLength;
+    // outDispImageMsg.min_disparity = _focalLength * _baseline / _maxDepth;
+    // outDispImageMsg.max_disparity = _focalLength * _baseline / _minDepth;
+
+    outDispImageMsg.min_disparity = 2;
+    outDispImageMsg.max_disparity = 95;
+
+
+    sensor_msgs::Image& outImageMsg = outDispImageMsg.image;
+
+    outImageMsg.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
+    outImageMsg.header = outDispImageMsg.header;
+
     if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW8) {
         spdlog::info("raw 8 type");
+        outDispImageMsg.delta_d = 1.0;
+        const size_t size = disparityFrame->getData().size() * sizeof(float);
+        outImageMsg.data.resize(size);
+        outImageMsg.height = disparityFrame->getHeight();
+        outImageMsg.width = disparityFrame->getWidth();
+        outImageMsg.step = size / disparityFrame->getHeight();
+        outImageMsg.is_bigendian = true;
+
+        std::vector<float> convertedData(disparityFrame->getData().begin(), disparityFrame->getData().end());
+
+        unsigned char* imageMsgDataPtr = reinterpret_cast<unsigned char*>(outImageMsg.data.data());
+
+        unsigned char* daiImgData = reinterpret_cast<unsigned char*>(convertedData.data());
+
+        // TODO(Sachin): Try using assign since it is a vector
+        // img->data.assign(packet.data->cbegin(), packet.data->cend());
+        memcpy(imageMsgDataPtr, daiImgData, size);
+
+        m_disparityPub->publish(outDispImageMsg);
+
     }else if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW16) {
         spdlog::info("raw 16 type");
     }else {

@@ -61,8 +61,8 @@ with dai.Device() as device:
     rightId = dai.CameraBoardSocket.RIGHT # 2
 
 
-    calibData.setCameraIntrinsics(leftId, leftIntrinsic.tolist(), 640, 480)
-    calibData.setCameraIntrinsics(rightId, rightIntrinsic.tolist(), 640, 480)
+    calibData.setCameraIntrinsics(leftId, leftIntrinsic.tolist(), 1280, 800)
+    calibData.setCameraIntrinsics(rightId, rightIntrinsic.tolist(), 1280, 800)
 
     # STEP 2 - distortion
 

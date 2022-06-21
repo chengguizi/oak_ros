@@ -13,6 +13,9 @@
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/Imu.h>
 
+#include "sensor_msgs/image_encodings.h"
+#include "stereo_msgs/DisparityImage.h"
+
 class OakRos : public OakRosInterface
 {
 public:
@@ -118,6 +121,6 @@ private:
     ros::NodeHandle m_nh;
     std::shared_ptr<image_transport::ImageTransport> m_imageTransport;
     std::shared_ptr<image_transport::CameraPublisher> m_leftPub, m_rightPub;
-    std::shared_ptr<ros::Publisher> m_imuPub;
+    std::shared_ptr<ros::Publisher> m_imuPub, m_disparityPub;
 
 };

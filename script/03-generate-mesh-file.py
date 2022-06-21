@@ -132,7 +132,7 @@ def getMesh(calibData):
     # mapXR, mapYR = cv2.initUndistortRectifyMap(M2, d2, R2, M2, resolution, cv2.CV_32FC1)
 
     print("Mesh assumes fisheye camera Type")
-    mapXL, mapYL = cv2.fisheye.initUndistortRectifyMap(M1, d1[0:4], R1, M1, resolution, cv2.CV_32FC1)
+    mapXL, mapYL = cv2.fisheye.initUndistortRectifyMap(M1, d1[0:4], R1, M2, resolution, cv2.CV_32FC1)
     mapXR, mapYR = cv2.fisheye.initUndistortRectifyMap(M2, d2[0:4], R2, M2, resolution, cv2.CV_32FC1)
 
     meshCellSize = 16
