@@ -7,16 +7,18 @@ import argparse
 
 import numpy as np
 
+import cv2
+
 import yaml
 
 # about camera type
 # Perspective = 0, Fisheye = 1, Equirectangular = 2, RadialDivision = 3 
 
-calibJsonFile = str((Path(__file__).parent / Path('./depthai_calib.json')).resolve().absolute())
+# calibJsonFile = str((Path(__file__).parent / Path('./depthai_calib.json')).resolve().absolute())
 kalibrYamlFile = str((Path(__file__).parent / Path('./camchain-nominal.yaml')).resolve().absolute())
 
 parser = argparse.ArgumentParser()
-parser.add_argument('calibJsonFile', nargs='?', help="Path to V6 calibration file in json", default=calibJsonFile)
+# parser.add_argument('calibJsonFile', nargs='?', help="Path to V6 calibration file in json", default=calibJsonFile)
 parser.add_argument('kalibrYamlFile', nargs='?', help="Path to Kalibr file in yaml", default=kalibrYamlFile)
 args = parser.parse_args()
 
@@ -39,7 +41,10 @@ def getRt(T):
 # Connect device
 with dai.Device() as device:
 
-    calibData = dai.CalibrationHandler(args.calibJsonFile)
+    calibData = dai.CalibrationHandler()
+
+    calibData.setBoardInfo("BW1098OBC", "R0M0E0")
+    # calibData.setBoardInfo("OAK-D-LITE", "R0M0E0")
 
     with open(args.kalibrYamlFile, 'r') as stream:
         try:
@@ -49,8 +54,8 @@ with dai.Device() as device:
 
     # STEP 1 - intrinsic
 
-    leftIntrinsic = getIntrinsicMatrix(kalibrYaml['cam0']['intrinsics'])
-    rightIntrinsic = getIntrinsicMatrix(kalibrYaml['cam1']['intrinsics'])
+    leftIntrinsic = getIntrinsicMatrix(kalibrYaml['cam1']['intrinsics'])
+    rightIntrinsic = getIntrinsicMatrix(kalibrYaml['cam0']['intrinsics'])
 
     print("\nIntrinsic Matrices")
     print(leftIntrinsic)
@@ -59,6 +64,7 @@ with dai.Device() as device:
 
     leftId = dai.CameraBoardSocket.LEFT # 1
     rightId = dai.CameraBoardSocket.RIGHT # 2
+
 
 
     calibData.setCameraIntrinsics(leftId, leftIntrinsic.tolist(), 1280, 800)
@@ -83,10 +89,10 @@ with dai.Device() as device:
 
     # STEP 3 - extrinsic
 
-    left_T_right = np.array(kalibrYaml['cam1']['T_cn_cnm1'])
+    right_T_left = np.array(kalibrYaml['cam1']['T_cn_cnm1'])
     # right_T_left = np.linalg.inv(left_T_right)
 
-    leftR, leftt = getRt(left_T_right)
+    leftR, leftt = getRt(right_T_left)
     # rightR, rightt = getRt()
 
     print("\nLeft Camera Extrinsic")
@@ -95,10 +101,21 @@ with dai.Device() as device:
 
     calibData.setCameraExtrinsics(leftId, rightId, leftR, leftt, [-7.5,0,0])
 
+    calibData.setFov(leftId, 72.9)
+    calibData.setFov(rightId, 72.9)
+
     # STEP 4 - rectification
 
-    calibData.setStereoLeft(leftId, np.eye(3).tolist())
-    calibData.setStereoRight(rightId, np.eye(3).tolist())
+    R1, R2, P1, P2, Q = cv2.fisheye.stereoRectify(leftIntrinsic, leftD[0:4], rightIntrinsic, rightD[0:4], (1280, 800), leftR, leftt, 0)
+
+    print(f"R1\n{R1}")
+    print(f"R2\n{R2}")
+    print(f"P1\n{P1}")
+    print(f"P2\n{P2}")
+    print(f"Q\n{Q}")
+
+    calibData.setStereoLeft(leftId, R1.tolist())
+    calibData.setStereoRight(rightId, R2.tolist())
 
     status = device.flashCalibration(calibData)
     if status:
