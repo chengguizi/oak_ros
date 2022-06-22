@@ -1,0 +1,75 @@
+#pragma once
+
+#include <spdlog/spdlog.h>
+
+#include <limits>
+#include <type_traits>
+
+#include <sensor_msgs/point_cloud2_iterator.h>
+
+// template<typename T>
+class OakPointCloudConverter {
+  public:
+    OakPointCloudConverter(float fx, float fy, float cu, float cv, float baseline,
+                           int depth_decimation_factor = 1)
+        : m_fx(fx), m_fy(fy), m_cu(cu), m_cv(cv), m_baseline(baseline),
+          m_depth_decimation_factor(depth_decimation_factor) {
+        spdlog::info("initialised OakPointCloudConverter with fx = {}, fy = {}, cu = {}, cv = {}, "
+                     "baseline = {}, decimation factor = {}",
+                     m_fx, m_fy, m_cu, m_cv, m_baseline, m_depth_decimation_factor);
+    };
+
+    void setScale(int scale) {m_scale = scale;}
+
+    // depth = focal_length_in_pixels * baseline / disparity_in_pixels
+    template <typename T>
+    void Disparity2PointCloud(std::shared_ptr<dai::ImgFrame> disparityFrame,
+                              sensor_msgs::PointCloud2::Ptr &cloudMsg, float baseline = 0);
+
+  private:
+    float m_fx, m_fy, m_cu, m_cv, m_baseline;
+    float m_maximum_depth = 10;
+    int m_depth_decimation_factor;
+    int m_scale = 1;
+};
+
+template <typename T>
+void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame> disparityFrame,
+                                                  sensor_msgs::PointCloud2::Ptr &cloudMsg,
+                                                  float baseline) {
+
+    // https://github.com/ros-perception/image_pipeline/blob/noetic/depth_image_proc/include/depth_image_proc/depth_conversions.h
+
+    float constant_x = m_fx;
+    float constant_y = m_fy;
+    float bad_point = std::numeric_limits<float>::quiet_NaN();
+
+    sensor_msgs::PointCloud2Iterator<float> iter_x(*cloudMsg, "x");
+    sensor_msgs::PointCloud2Iterator<float> iter_y(*cloudMsg, "y");
+    sensor_msgs::PointCloud2Iterator<float> iter_z(*cloudMsg, "z");
+    const T *disparity_row = reinterpret_cast<const T *>(&disparityFrame->getData()[0]);
+    int row_step = disparityFrame->getWidth();
+    for (int v = 0; v < (int)cloudMsg->height; ++v, disparity_row += row_step) {
+        for (int u = 0; u < (int)cloudMsg->width; ++u, ++iter_x, ++iter_y, ++iter_z) {
+            float disparity = (float)disparity_row[u] / m_depth_decimation_factor / m_scale;
+
+            // Missing points denoted by zero
+            if (disparity == 0) {
+                *iter_x = *iter_y = *iter_z = bad_point;
+                continue;
+            }
+
+            float depth = m_fx * m_baseline / disparity;
+
+            if (depth >= m_maximum_depth) {
+                *iter_x = *iter_y = *iter_z = bad_point;
+                continue;
+            }
+
+            // Fill in XYZ
+            *iter_x = (u - m_cu) * depth / constant_x;
+            *iter_y = (v - m_cv) * depth / constant_y;
+            *iter_z = depth;
+        }
+    }
+}

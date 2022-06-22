@@ -50,8 +50,11 @@ int main(int argc, char **argv)
     int option_frequency;
     int option_resolution;
     std::string option_exposure_mode;
+    bool option_stereo;
     bool option_depth;
     bool option_disparity;
+    bool option_pointcloud;
+    int option_depth_decimation_factor;
     std::string option_mesh_dir;
     bool option_rectified;
     bool option_rates_workaround;
@@ -66,8 +69,11 @@ int main(int argc, char **argv)
 
     nh_local.param<int>("frequency", option_frequency, -1);
     nh_local.param<int>("resolution", option_resolution, 480);
+    nh_local.param<bool>("stereo", option_stereo, true);
     nh_local.param<bool>("depth", option_depth, false);
     nh_local.param<bool>("disparity", option_disparity, false);
+    nh_local.param<bool>("pointcloud", option_pointcloud, false);
+    nh_local.param<int>("depth_decimation_factor", option_depth_decimation_factor, 1);
     nh_local.param<std::string>("mesh_dir", option_mesh_dir, "");
     nh_local.param<bool>("rectified", option_rectified, true);
     nh_local.param<std::string>("exposure_mode", option_exposure_mode, "auto");
@@ -154,11 +160,14 @@ int main(int argc, char **argv)
 
         params.enable_depth = option_depth;
         params.enable_disparity = option_disparity;
+        params.enable_pointcloud = option_pointcloud;
+        params.depth_decimation_factor = option_depth_decimation_factor;
         
         params.device_id = id;
         params.topic_name = "oak" + std::to_string(topic_name_seq);
 
         params.rates_workaround = option_rates_workaround;
+        params.enable_stereo = option_stereo;
         params.enable_stereo_rectified = option_rectified;
         params.enable_mesh_dir = option_mesh_dir;
 

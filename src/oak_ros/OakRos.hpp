@@ -15,6 +15,9 @@
 
 #include "sensor_msgs/image_encodings.h"
 #include "stereo_msgs/DisparityImage.h"
+#include "sensor_msgs/PointCloud2.h"
+
+class OakPointCloudConverter;
 
 class OakRos : public OakRosInterface
 {
@@ -70,7 +73,7 @@ private:
 
     // 1 means no throttling, only publish every N frames
     unsigned int m_stereo_seq_throttle;
-    unsigned int lastSeq;
+    unsigned int lastDispSeq;
     unsigned int lastPublishedSeq;
     double lastGyroTs;
     
@@ -121,6 +124,11 @@ private:
     ros::NodeHandle m_nh;
     std::shared_ptr<image_transport::ImageTransport> m_imageTransport;
     std::shared_ptr<image_transport::CameraPublisher> m_leftPub, m_rightPub;
-    std::shared_ptr<ros::Publisher> m_imuPub, m_disparityPub;
+    std::shared_ptr<ros::Publisher> m_imuPub, m_disparityPub, m_cloudPub;
+
+
+    sensor_msgs::PointCloud2::Ptr m_cloudMsg;
+    stereo_msgs::DisparityImage::Ptr m_outDispImageMsg;
+    std::shared_ptr<OakPointCloudConverter> m_pointCloudConverter;
 
 };

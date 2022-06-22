@@ -55,6 +55,8 @@ struct OakRosParams
 
     bool enable_depth = false;
     bool enable_disparity = false;
+    bool enable_pointcloud = false;
+    int depth_decimation_factor = 1;
     // dai::StereoDepthProperties
 
     bool enable_rgb = false;
