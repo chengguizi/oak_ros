@@ -8,23 +8,22 @@
 
 #include <oak_ros/OakRosInterface.hpp>
 
+#include <image_transport/image_transport.h>
 #include <ros/ros.h>
 #include <sensor_msgs/CameraInfo.h>
-#include <image_transport/image_transport.h>
 #include <sensor_msgs/Imu.h>
 
+#include "sensor_msgs/PointCloud2.h"
 #include "sensor_msgs/image_encodings.h"
 #include "stereo_msgs/DisparityImage.h"
-#include "sensor_msgs/PointCloud2.h"
 
 class OakPointCloudConverter;
 
-class OakRos : public OakRosInterface
-{
-public:
+class OakRos : public OakRosInterface {
+  public:
     void init(const ros::NodeHandle &nh, const OakRosParams &params);
 
-    void deinit(){
+    void deinit() {
         m_running = false;
 
         if (m_run.joinable())
@@ -40,7 +39,7 @@ public:
         m_pipeline = dai::Pipeline();
     }
 
-    void restart(){
+    void restart() {
         restartCount++;
 
         // if (restartCount > 2){
@@ -56,15 +55,14 @@ public:
 
     static std::vector<std::string> getAllAvailableDeviceIds();
 
-    dai::DeviceInfo getDeviceInfo(const std::string& device_id);
+    dai::DeviceInfo getDeviceInfo(const std::string &device_id);
 
-    ~OakRos(){
+    ~OakRos() {
         deinit();
         spdlog::info("{} OakRos class destructor done.", m_device_id);
     }
 
-private:
-
+  private:
     bool m_running;
     OakRosParams m_params;
     bool m_stereo_is_rectified;
@@ -76,7 +74,7 @@ private:
     unsigned int lastDispSeq;
     unsigned int lastPublishedSeq;
     double lastGyroTs;
-    
+
     bool m_ts_align_to_right;
 
     std::string m_device_id;
@@ -85,7 +83,8 @@ private:
     dai::Pipeline m_pipeline;
 
     std::shared_ptr<dai::Device> m_device;
-    std::shared_ptr<dai::DataOutputQueue> m_leftQueue, m_rightQueue, m_depthQueue, m_disparityQueue, m_rgbQueue, m_imuQueue;
+    std::shared_ptr<dai::DataOutputQueue> m_leftQueue, m_rightQueue, m_depthQueue, m_disparityQueue,
+        m_rgbQueue, m_imuQueue;
 
     std::shared_ptr<dai::DataInputQueue> m_controlQueue;
 
@@ -118,17 +117,22 @@ private:
     void disparityCallback(std::shared_ptr<dai::ADatatype> data);
     void imuCallback(std::shared_ptr<dai::ADatatype> data);
 
-    sensor_msgs::CameraInfo getCameraInfo(std::shared_ptr<dai::ImgFrame> img, dai::CameraBoardSocket socket); // In Oak convention, right camera is the main camera
+    void calculateMeshData(int meshStep, const dai::CameraBoardSocket socketLeft,
+                           const dai::CameraBoardSocket socketRight,
+                           std::vector<std::uint8_t> &leftData,
+                           std::vector<std::uint8_t> &rightData);
+
+    sensor_msgs::CameraInfo getCameraInfo(
+        std::shared_ptr<dai::ImgFrame> img,
+        dai::CameraBoardSocket socket); // In Oak convention, right camera is the main camera
 
     // ROS related functionalities
     ros::NodeHandle m_nh;
     std::shared_ptr<image_transport::ImageTransport> m_imageTransport;
     std::shared_ptr<image_transport::CameraPublisher> m_leftPub, m_rightPub;
-    std::shared_ptr<ros::Publisher> m_imuPub, m_disparityPub, m_cloudPub;
+    std::shared_ptr<ros::Publisher> m_imuPub, m_disparityPub, m_cloudPubFromDisp, m_cloudPubFromDepth;
 
-
-    sensor_msgs::PointCloud2::Ptr m_cloudMsg;
+    sensor_msgs::PointCloud2::Ptr m_cloudMsgFromDisp, m_cloudMsgFromDepth;
     stereo_msgs::DisparityImage::Ptr m_outDispImageMsg;
-    std::shared_ptr<OakPointCloudConverter> m_pointCloudConverter;
-
+    std::shared_ptr<OakPointCloudConverter> m_disparity2PointCloudConverter, m_depth2PointCloudConverter;
 };

@@ -46,13 +46,14 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
             usbSpeedMax = dai::UsbSpeed::HIGH;
         else
             usbSpeedMax = dai::UsbSpeed::SUPER;
-        
+
         if (m_params.device_id.empty()) {
             spdlog::info("Creating device without specific id");
             m_device = std::make_shared<dai::Device>(m_pipeline, usbSpeedMax);
         } else {
             spdlog::info("Creating device with specific id {}", m_params.device_id);
-            m_device = std::make_shared<dai::Device>(m_pipeline, getDeviceInfo(m_params.device_id), usbSpeedMax);
+            m_device = std::make_shared<dai::Device>(m_pipeline, getDeviceInfo(m_params.device_id),
+                                                     usbSpeedMax);
         }
 
         dai::UsbSpeed usbSpeed = m_device->getUsbSpeed();
@@ -152,7 +153,8 @@ void OakRos::setupControlQueue(std::shared_ptr<dai::node::XLinkIn> xinControl) {
         spdlog::info("{} Enable manual exposure = {} and iso = {}", m_params.device_id, exposure,
                      iso);
     } else {
-        spdlog::info("{} Enable auto exposure with compesnation {}", m_params.device_id, m_params.exposure_compensation);
+        spdlog::info("{} Enable auto exposure with compesnation {}", m_params.device_id,
+                     m_params.exposure_compensation);
         ctrl.setAutoExposureEnable();
         ctrl.setAutoExposureCompensation(m_params.exposure_compensation);
     }
@@ -196,7 +198,8 @@ void OakRos::configureStereo() {
     m_monoLeft = m_pipeline.create<dai::node::MonoCamera>();
     m_monoRight = m_pipeline.create<dai::node::MonoCamera>();
 
-    if (m_params.enable_stereo || m_params.enable_depth || m_params.enable_disparity || m_params.enable_pointcloud) {
+    if (m_params.enable_stereo || m_params.enable_depth || m_params.enable_disparity ||
+        m_params.enable_pointcloud) {
 
         if (m_params.stereo_resolution) {
             m_monoLeft->setResolution(m_params.stereo_resolution.value());
@@ -214,7 +217,8 @@ void OakRos::configureStereo() {
         }
 
         // case where no depth node is required
-        if (!m_params.enable_stereo_rectified && m_params.enable_stereo && !m_params.enable_depth && !m_params.enable_disparity && !m_params.enable_pointcloud) {
+        if (!m_params.enable_stereo_rectified && m_params.enable_stereo && !m_params.enable_depth &&
+            !m_params.enable_disparity && !m_params.enable_pointcloud) {
             spdlog::info("{} enabling both only raw stereo...", m_params.device_id);
 
             if (m_params.rates_workaround) {
@@ -230,7 +234,8 @@ void OakRos::configureStereo() {
 
         }
         // case where depth node is required
-        else if (m_params.enable_depth || m_params.enable_disparity || m_params.enable_pointcloud || m_params.enable_stereo_rectified) {
+        else if (m_params.enable_depth || m_params.enable_disparity || m_params.enable_pointcloud ||
+                 m_params.enable_stereo_rectified) {
             stereoDepth = m_pipeline.create<dai::node::StereoDepth>();
             stereoDepth->setDefaultProfilePreset(dai::node::StereoDepth::PresetMode::HIGH_DENSITY);
             stereoDepth->setRectifyEdgeFillColor(0); // black, to better see the cutout
@@ -241,8 +246,8 @@ void OakRos::configureStereo() {
             stereoDepth->setSubpixel(true);
             // stereoDepth->useHomographyRectification(false);
 
-            
-            // ref https://github.com/matthewoots/depthai-mapping/blob/master/src/depth_publisher.cpp
+            // ref
+            // https://github.com/matthewoots/depthai-mapping/blob/master/src/depth_publisher.cpp
             // set post processing
             auto PostConfig = stereoDepth->initialConfig.get();
 
@@ -264,22 +269,23 @@ void OakRos::configureStereo() {
             PostConfig.postProcessing.thresholdFilter.maxRange = 10000;
 
             // Following realsense D435i
-            PostConfig.postProcessing.decimationFilter.decimationFactor = m_params.depth_decimation_factor;
+            PostConfig.postProcessing.decimationFilter.decimationFactor =
+                m_params.depth_decimation_factor;
 
             // median filter generate quite some delay
-            // PostConfig.postProcessing.decimationFilter.decimationMode = 
+            // PostConfig.postProcessing.decimationFilter.decimationMode =
             //     dai::RawStereoDepthConfig::PostProcessing::DecimationFilter::DecimationMode::NON_ZERO_MEDIAN;
 
             stereoDepth->initialConfig.set(PostConfig);
 
             // Load Mesh Data
-            if (m_params.enable_mesh_dir.empty())
-                spdlog::warn("No mesh file directory specified, skip mesh overriding");
-            else {
-                auto leftPath = m_params.enable_mesh_dir + "/left_mesh.calib";
-                auto rightPath = m_params.enable_mesh_dir + "/right_mesh.calib";
-                spdlog::warn("Load mesh files at \n - {}\n - {}", leftPath, rightPath);
-                stereoDepth->loadMeshFiles(leftPath, rightPath);
+            if (m_params.use_mesh) {
+                std::vector<std::uint8_t> dataLeft, dataRight;
+                constexpr int meshStep = 16;
+                calculateMeshData(meshStep, dai::CameraBoardSocket::LEFT,
+                                  dai::CameraBoardSocket::RIGHT, dataLeft, dataRight);
+                spdlog::warn("Use Generated mesh data for un-distortion and rectification");
+                stereoDepth->loadMeshData(dataLeft, dataRight);
             }
 
             // Linking
@@ -387,7 +393,7 @@ void OakRos::run() {
         while (m_running) {
             // process stereo data
             constexpr double deltaT = 2e-3; // 2ms trigger delay
-            if (m_leftQueue.get() && m_rightQueue.get()) {                
+            if (m_leftQueue.get() && m_rightQueue.get()) {
 
                 try {
 
@@ -427,8 +433,6 @@ void OakRos::run() {
 
                 maxTs += deltaT + deltaT;
 
-                
-
                 {
                     long seqLeftNow = left->getSequenceNum();
                     long seqRightNow = right->getSequenceNum();
@@ -446,8 +450,6 @@ void OakRos::run() {
                     seqLeft = seqLeftNow;
                     seqRight = seqRightNow;
                 }
-
-                
 
                 // Here we have make sure the stereo have the same sequence number. According to
                 // OAK, this ensures synchronisation
@@ -490,7 +492,8 @@ void OakRos::run() {
                 double deltaTs = std::abs(tsLeft - tsRight);
                 if (deltaTs > 2.0e-3) // 1ms
                 {
-                    spdlog::error("left ({}) and right ({}) out of sync by {}", seqLeft, seqRight, deltaTs);
+                    spdlog::error("left ({}) and right ({}) out of sync by {}", seqLeft, seqRight,
+                                  deltaTs);
                     std::runtime_error("");
                 }
 
@@ -557,19 +560,19 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
     unsigned int seq = disparityFrame->getSequenceNum();
 
     if (lastDispSeq != 0 && seq > lastDispSeq + 1) {
-        spdlog::warn("jump detected in disp frame, from {} to {}. should be {}", lastDispSeq, seq, lastDispSeq + 1);
+        spdlog::warn("jump detected in disp frame, from {} to {}. should be {}", lastDispSeq, seq,
+                     lastDispSeq + 1);
     }
     lastDispSeq = seq;
     double ts = disparityFrame->getTimestamp().time_since_epoch().count() / 1.0e9;
 
     // spdlog::info("{} disparity seq = {}, ts = {}", m_params.device_id, seq, ts);
 
-    
     if (m_params.enable_disparity) {
 
         if (!m_disparityPub.get()) {
-            m_disparityPub.reset(
-                new auto(m_nh.advertise<stereo_msgs::DisparityImage>(m_params.topic_name + "/disparity", 10)));
+            m_disparityPub.reset(new auto(m_nh.advertise<stereo_msgs::DisparityImage>(
+                m_params.topic_name + "/disparity", 10)));
             spdlog::info("{} received first disparity image message!", m_params.device_id);
 
             m_outDispImageMsg.reset(new stereo_msgs::DisparityImage);
@@ -577,15 +580,18 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
             m_outDispImageMsg->header.frame_id = "right_camera_optical_frame";
 
             dai::CalibrationHandler calibData = m_device->readCalibration();
-            std::vector<std::vector<float>> intrinsics = calibData.getCameraIntrinsics(dai::CameraBoardSocket::RIGHT, disparityFrame->getWidth(), disparityFrame->getHeight());
+            std::vector<std::vector<float>> intrinsics = calibData.getCameraIntrinsics(
+                dai::CameraBoardSocket::RIGHT, disparityFrame->getWidth(),
+                disparityFrame->getHeight());
 
             float fx = intrinsics[0][0];
             float fy = intrinsics[1][1];
             float cu = intrinsics[0][2];
             float cv = intrinsics[1][2];
 
-            float baseline = calibData.getBaselineDistance(dai::CameraBoardSocket::RIGHT, dai::CameraBoardSocket::LEFT, false) / 100.;
-
+            float baseline = calibData.getBaselineDistance(dai::CameraBoardSocket::RIGHT,
+                                                           dai::CameraBoardSocket::LEFT, false) /
+                             100.;
 
             float _focalLength = 880;
             float _baseline = 0.075;
@@ -597,16 +603,16 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
 
             m_outDispImageMsg->min_disparity = 2;
             m_outDispImageMsg->max_disparity = 95;
-
         }
 
-        sensor_msgs::Image& outImageMsg = m_outDispImageMsg->image;
+        sensor_msgs::Image &outImageMsg = m_outDispImageMsg->image;
 
         outImageMsg.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
         outImageMsg.header = m_outDispImageMsg->header;
 
-         // const size_t size = disparityFrame->getData().size() * sizeof(float);
-        const size_t size = disparityFrame->getHeight() * disparityFrame->getWidth() * sizeof(float);
+        // const size_t size = disparityFrame->getData().size() * sizeof(float);
+        const size_t size =
+            disparityFrame->getHeight() * disparityFrame->getWidth() * sizeof(float);
         outImageMsg.data.resize(size);
         outImageMsg.height = disparityFrame->getHeight();
         outImageMsg.width = disparityFrame->getWidth();
@@ -616,15 +622,17 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
         if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW8) {
             // spdlog::info("raw 8 type");
             m_outDispImageMsg->delta_d = 1.0;
-           
 
-            // spdlog::info("disparity frame width {}, height {}, size {}", outImageMsg.width, outImageMsg.height, disparityFrame->getData().size());
+            // spdlog::info("disparity frame width {}, height {}, size {}", outImageMsg.width,
+            // outImageMsg.height, disparityFrame->getData().size());
 
-            std::vector<float> convertedData(disparityFrame->getData().begin(), disparityFrame->getData().end());
+            std::vector<float> convertedData(disparityFrame->getData().begin(),
+                                             disparityFrame->getData().end());
 
-            unsigned char* imageMsgDataPtr = reinterpret_cast<unsigned char*>(outImageMsg.data.data());
+            unsigned char *imageMsgDataPtr =
+                reinterpret_cast<unsigned char *>(outImageMsg.data.data());
 
-            unsigned char* daiImgData = reinterpret_cast<unsigned char*>(convertedData.data());
+            unsigned char *daiImgData = reinterpret_cast<unsigned char *>(convertedData.data());
 
             // TODO(Sachin): Try using assign since it is a vector
             // img->data.assign(packet.data->cbegin(), packet.data->cend());
@@ -632,81 +640,90 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
 
             m_disparityPub->publish(m_outDispImageMsg);
 
-        }else if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW16) {
+        } else if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW16) {
 
             m_outDispImageMsg->delta_d = 1.0 / 8;
 
-            unsigned char* daiImgData = reinterpret_cast<unsigned char*>(disparityFrame->getData().data());
+            unsigned char *daiImgData =
+                reinterpret_cast<unsigned char *>(disparityFrame->getData().data());
 
-            std::vector<uint16_t> raw16Data(disparityFrame->getHeight() * disparityFrame->getWidth());
-            unsigned char* raw16DataPtr = reinterpret_cast<unsigned char*>(raw16Data.data());
-            memcpy(raw16DataPtr, daiImgData, disparityFrame->getHeight() * disparityFrame->getWidth() * sizeof(uint16_t));
+            std::vector<uint16_t> raw16Data(disparityFrame->getHeight() *
+                                            disparityFrame->getWidth());
+            unsigned char *raw16DataPtr = reinterpret_cast<unsigned char *>(raw16Data.data());
+            memcpy(raw16DataPtr, daiImgData,
+                   disparityFrame->getHeight() * disparityFrame->getWidth() * sizeof(uint16_t));
             std::vector<float> convertedData;
             std::transform(
-                raw16Data.begin(), raw16Data.end(), std::back_inserter(convertedData), [](uint16_t disp) -> std::size_t { return static_cast<float>(disp) / 8.0; });
+                raw16Data.begin(), raw16Data.end(), std::back_inserter(convertedData),
+                [](uint16_t disp) -> std::size_t { return static_cast<float>(disp) / 8.0; });
 
-            unsigned char* imageMsgDataPtr = reinterpret_cast<unsigned char*>(outImageMsg.data.data());
-            unsigned char* convertedDataPtr = reinterpret_cast<unsigned char*>(convertedData.data());
+            unsigned char *imageMsgDataPtr =
+                reinterpret_cast<unsigned char *>(outImageMsg.data.data());
+            unsigned char *convertedDataPtr =
+                reinterpret_cast<unsigned char *>(convertedData.data());
             memcpy(imageMsgDataPtr, convertedDataPtr, size);
 
             m_disparityPub->publish(m_outDispImageMsg);
-        }else {
+        } else {
             spdlog::info("type : {}", disparityFrame->getType());
             throw std::runtime_error("not implemented");
         }
     }
 
+    if (m_params.enable_pointcloud) {
 
-    if (m_params.enable_pointcloud){
+        if (!m_cloudPubFromDisp.get()) {
+            m_cloudPubFromDisp.reset(new auto(
+                m_nh.advertise<sensor_msgs::PointCloud2>(m_params.topic_name + "/pointcloud", 10)));
+            spdlog::info(
+                "{} received first disparity image message! used for pointcloud generation",
+                m_params.device_id);
 
-        if (!m_cloudPub.get()) {
-            m_cloudPub.reset(
-                new auto(m_nh.advertise<sensor_msgs::PointCloud2>(m_params.topic_name + "/pointcloud", 10)));
-            spdlog::info("{} received first disparity image message! used for pointcloud generation", m_params.device_id);
+            m_cloudMsgFromDisp.reset(new sensor_msgs::PointCloud2);
         }
-        
-         // publish_pointcloud == true
-        if (!m_pointCloudConverter.get()) {
+
+        // publish_pointcloud == true
+        if (!m_disparity2PointCloudConverter.get()) {
 
             // obtain intrinsics of the right camera
 
             dai::CalibrationHandler calibData = m_device->readCalibration();
-            std::vector<std::vector<float>> intrinsics = calibData.getCameraIntrinsics(dai::CameraBoardSocket::RIGHT, disparityFrame->getWidth(), disparityFrame->getHeight());
+            std::vector<std::vector<float>> intrinsics = calibData.getCameraIntrinsics(
+                dai::CameraBoardSocket::RIGHT, disparityFrame->getWidth(),
+                disparityFrame->getHeight());
 
             float fx = intrinsics[0][0];
             float fy = intrinsics[1][1];
             float cu = intrinsics[0][2];
             float cv = intrinsics[1][2];
 
-            float baseline = calibData.getBaselineDistance(dai::CameraBoardSocket::RIGHT, dai::CameraBoardSocket::LEFT, false) / 100.;
+            float baseline = calibData.getBaselineDistance(dai::CameraBoardSocket::RIGHT,
+                                                           dai::CameraBoardSocket::LEFT, false) /
+                             100.;
 
-            m_pointCloudConverter.reset(new OakPointCloudConverter(fx, fy, cu, cv, baseline, m_params.depth_decimation_factor));
+            m_disparity2PointCloudConverter.reset(new OakPointCloudConverter(
+                fx, fy, cu, cv, baseline, m_params.depth_decimation_factor));
 
-            m_cloudMsg.reset(new sensor_msgs::PointCloud2);
-
-            m_cloudMsg->header.stamp = ros::Time().fromSec(ts);
-            m_cloudMsg->header.frame_id = "base_link";
-            m_cloudMsg->height = disparityFrame->getHeight();
-            m_cloudMsg->width = disparityFrame->getWidth();
-            m_cloudMsg->is_dense = false;
-            m_cloudMsg->is_bigendian = false;
-
+            m_cloudMsgFromDisp->header.stamp = ros::Time().fromSec(ts);
+            m_cloudMsgFromDisp->header.frame_id = "base_link";
+            m_cloudMsgFromDisp->height = disparityFrame->getHeight();
+            m_cloudMsgFromDisp->width = disparityFrame->getWidth();
+            m_cloudMsgFromDisp->is_dense = false;
+            m_cloudMsgFromDisp->is_bigendian = false;
         }
-        sensor_msgs::PointCloud2Modifier pcd_modifier(*m_cloudMsg);
+        sensor_msgs::PointCloud2Modifier pcd_modifier(*m_cloudMsgFromDisp);
         pcd_modifier.setPointCloud2FieldsByString(1, "xyz");
 
         if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW8) {
-            m_pointCloudConverter->Disparity2PointCloud<uint8_t>(disparityFrame, m_cloudMsg);
-        }else if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW16){
-            m_pointCloudConverter->setScale(8); // default 3 bit fractional
-            m_pointCloudConverter->Disparity2PointCloud<uint16_t>(disparityFrame, m_cloudMsg);
-        }else
+            m_disparity2PointCloudConverter->Disparity2PointCloud<uint8_t>(disparityFrame, m_cloudMsgFromDisp);
+        } else if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW16) {
+            m_disparity2PointCloudConverter->setScale(8); // default 3 bit fractional
+            m_disparity2PointCloudConverter->Disparity2PointCloud<uint16_t>(disparityFrame, m_cloudMsgFromDisp);
+        } else
             throw std::runtime_error("not implemented");
 
-        m_cloudPub->publish(m_cloudMsg);
-        
+        m_cloudPubFromDisp->publish(m_cloudMsgFromDisp);
     }
-    
 }
 
 void OakRos::imuCallback(std::shared_ptr<dai::ADatatype> data) {
@@ -850,3 +867,8 @@ dai::DeviceInfo OakRos::getDeviceInfo(const std::string &device_id) {
     spdlog::error("failed to find device with id {}", device_id);
     throw std::runtime_error("");
 }
+
+void OakRos::calculateMeshData(int meshStep, const dai::CameraBoardSocket socketLeft,
+                               const dai::CameraBoardSocket socketRight,
+                               std::vector<std::uint8_t> &leftData,
+                               std::vector<std::uint8_t> &rightData) {}
