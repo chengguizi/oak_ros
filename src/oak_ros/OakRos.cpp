@@ -381,7 +381,7 @@ void OakRos::run() {
     cv::Mat leftCvFrame, rightCvFrame;
     sensor_msgs::CameraInfo leftCameraInfo, rightCameraInfo;
 
-    long seqLeft = 0, seqRight = 0;
+    long seqLeft = -1, seqRight = -1;
     double tsLeft = -1, tsRight = -1;
     double maxTs = 0;
 
@@ -497,6 +497,13 @@ void OakRos::run() {
                     std::runtime_error("");
                 }
 
+                if (m_params.enable_disparity || m_params.enable_depth)
+                {
+                    m_mutex.lock();
+                    m_rightFrameHistory.push(right);
+                    m_mutex.unlock();
+                }
+                
                 // publish left frame and camera info
                 {
                     leftCvFrame = left->getFrame();
@@ -558,6 +565,29 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
     constexpr bool publish_pointcloud = true;
 
     unsigned int seq = disparityFrame->getSequenceNum();
+
+    // tries to find matching right camera frame
+    std::shared_ptr<dai::ImgFrame> right;
+    m_mutex.lock();
+    while (m_rightFrameHistory.size()) {
+        std::shared_ptr<dai::ImgFrame> frame = m_rightFrameHistory.front();
+        
+        unsigned int rightSeq = frame->getSequenceNum();
+        if (rightSeq < seq) {
+            m_rightFrameHistory.pop();
+            continue;
+        }
+        else if (rightSeq > seq) {
+            spdlog::warn("fail to match the disparity frame seq {}, with next in line right frame seq {}", seq, rightSeq);
+            break;
+        }else {
+            m_rightFrameHistory.pop();
+            right = frame;
+            break; // found
+        }
+
+    }
+    m_mutex.unlock();
 
     if (lastDispSeq != 0 && seq > lastDispSeq + 1) {
         spdlog::warn("jump detected in disp frame, from {} to {}. should be {}", lastDispSeq, seq,
@@ -711,14 +741,12 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
             m_cloudMsgFromDisp->is_dense = false;
             m_cloudMsgFromDisp->is_bigendian = false;
         }
-        sensor_msgs::PointCloud2Modifier pcd_modifier(*m_cloudMsgFromDisp);
-        pcd_modifier.setPointCloud2FieldsByString(1, "xyz");
 
         if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW8) {
-            m_disparity2PointCloudConverter->Disparity2PointCloud<uint8_t>(disparityFrame, m_cloudMsgFromDisp);
+            m_disparity2PointCloudConverter->Disparity2PointCloud<uint8_t>(disparityFrame, right, m_cloudMsgFromDisp);
         } else if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW16) {
             m_disparity2PointCloudConverter->setScale(8); // default 3 bit fractional
-            m_disparity2PointCloudConverter->Disparity2PointCloud<uint16_t>(disparityFrame, m_cloudMsgFromDisp);
+            m_disparity2PointCloudConverter->Disparity2PointCloud<uint16_t>(disparityFrame, right, m_cloudMsgFromDisp);
         } else
             throw std::runtime_error("not implemented");
 

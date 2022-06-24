@@ -1,6 +1,7 @@
 #pragma once
 
 #include <thread>
+#include <mutex>
 
 #include <spdlog/spdlog.h>
 
@@ -131,6 +132,11 @@ class OakRos : public OakRosInterface {
     std::shared_ptr<image_transport::ImageTransport> m_imageTransport;
     std::shared_ptr<image_transport::CameraPublisher> m_leftPub, m_rightPub;
     std::shared_ptr<ros::Publisher> m_imuPub, m_disparityPub, m_cloudPubFromDisp, m_cloudPubFromDepth;
+
+    // store a short history of the right camera frames for rdbd pointcloud output
+    std::queue<std::shared_ptr<dai::ImgFrame>> m_rightFrameHistory; // TODO: right now the frame is un-rectified, not mathematically correct
+    std::mutex m_mutex;
+
 
     sensor_msgs::PointCloud2::Ptr m_cloudMsgFromDisp, m_cloudMsgFromDepth;
     stereo_msgs::DisparityImage::Ptr m_outDispImageMsg;
