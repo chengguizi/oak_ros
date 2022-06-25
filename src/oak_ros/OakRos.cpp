@@ -93,6 +93,9 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
 
     if (m_params.enable_disparity || m_params.enable_pointcloud) {
         m_disparityQueue = m_device->getOutputQueue("disparity", 2, false);
+
+        if (m_params.enable_pointcloud)
+            m_depthMonoQueue = m_device->getOutputQueue("depthmono", 2, false);
     }
 
     if (m_params.enable_imu) {
@@ -315,6 +318,23 @@ void OakRos::configureStereo() {
                 stereoDepth->disparity.link(xoutDisparity->input);
             }
 
+            // output rectified image for point cloud colorisation
+
+            if (m_params.enable_pointcloud) {
+                m_imageManip = m_pipeline.create<dai::node::ImageManip>();
+
+                const int width = m_monoRight->getResolutionWidth();
+                const int height = m_monoRight->getResolutionHeight();
+
+                m_imageManip->initialConfig.setResize(width / m_params.depth_decimation_factor, height / m_params.depth_decimation_factor);
+
+                auto xoutDepthMono = m_pipeline.create<dai::node::XLinkOut>();
+                xoutDepthMono->setStreamName("depthmono");
+                
+                stereoDepth->rectifiedRight.link(m_imageManip->inputImage);
+                m_imageManip->out.link(xoutDepthMono->input);
+            }
+
             // stereo rectified will need depth node
             if (m_params.enable_stereo) {
 
@@ -496,13 +516,6 @@ void OakRos::run() {
                                   deltaTs);
                     std::runtime_error("");
                 }
-
-                if (m_params.enable_disparity || m_params.enable_depth)
-                {
-                    m_mutex.lock();
-                    m_rightFrameHistory.push(right);
-                    m_mutex.unlock();
-                }
                 
                 // publish left frame and camera info
                 {
@@ -568,7 +581,16 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
 
     // tries to find matching right camera frame
     std::shared_ptr<dai::ImgFrame> right;
-    m_mutex.lock();
+    // m_mutex.lock();
+
+    while (true) {
+        auto frame = m_depthMonoQueue->get<dai::ImgFrame>();
+        m_rightFrameHistory.push(frame);
+
+        if (frame->getSequenceNum() >= seq)
+            break;
+    }
+
     while (m_rightFrameHistory.size()) {
         std::shared_ptr<dai::ImgFrame> frame = m_rightFrameHistory.front();
         
@@ -587,7 +609,10 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
         }
 
     }
-    m_mutex.unlock();
+
+    if (!right.get())
+        spdlog::warn("failed to find depthmono frame with seq {}", seq);
+    // m_mutex.unlock();
 
     if (lastDispSeq != 0 && seq > lastDispSeq + 1) {
         spdlog::warn("jump detected in disp frame, from {} to {}. should be {}", lastDispSeq, seq,

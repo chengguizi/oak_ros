@@ -85,7 +85,7 @@ class OakRos : public OakRosInterface {
 
     std::shared_ptr<dai::Device> m_device;
     std::shared_ptr<dai::DataOutputQueue> m_leftQueue, m_rightQueue, m_depthQueue, m_disparityQueue,
-        m_rgbQueue, m_imuQueue;
+        m_depthMonoQueue, m_imuQueue;
 
     std::shared_ptr<dai::DataInputQueue> m_controlQueue;
 
@@ -96,7 +96,7 @@ class OakRos : public OakRosInterface {
     std::shared_ptr<dai::node::MonoCamera> m_monoLeft, m_monoRight;
     std::shared_ptr<dai::node::StereoDepth> m_stereoDepth;
 
-    std::shared_ptr<dai::node::ColorCamera> m_colorMain;
+    std::shared_ptr<dai::node::ImageManip> m_imageManip;
 
     std::shared_ptr<dai::node::IMU> m_imu;
 
@@ -133,9 +133,8 @@ class OakRos : public OakRosInterface {
     std::shared_ptr<image_transport::CameraPublisher> m_leftPub, m_rightPub;
     std::shared_ptr<ros::Publisher> m_imuPub, m_disparityPub, m_cloudPubFromDisp, m_cloudPubFromDepth;
 
-    // store a short history of the right camera frames for rdbd pointcloud output
-    std::queue<std::shared_ptr<dai::ImgFrame>> m_rightFrameHistory; // TODO: right now the frame is un-rectified, not mathematically correct
-    std::mutex m_mutex;
+    // store a short history of the right camera frames (rectified, decimated) for rdbd pointcloud output
+    std::queue<std::shared_ptr<dai::ImgFrame>> m_rightFrameHistory;
 
 
     sensor_msgs::PointCloud2::Ptr m_cloudMsgFromDisp, m_cloudMsgFromDepth;

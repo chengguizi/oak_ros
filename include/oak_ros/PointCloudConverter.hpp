@@ -107,13 +107,11 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
         const T *disparity_row = reinterpret_cast<const T *>(&disparityFrame->getData()[0]);
         const uint8_t *image_row = reinterpret_cast<const uint8_t *>(&imageFrame->getData()[0]);
 
-        spdlog::info("{} {} {}", disparityFrame->getWidth(), imageFrame->getWidth(), m_depth_decimation_factor);
-
         int row_step = disparityFrame->getWidth();
-        for (int v = 0; v < (int)cloudMsg->height; ++v, disparity_row += row_step, image_row += imageFrame->getWidth() * m_depth_decimation_factor) {
+        for (int v = 0; v < (int)cloudMsg->height; ++v, disparity_row += row_step, image_row += imageFrame->getWidth()) {
             for (int u = 0; u < (int)cloudMsg->width; ++u, ++iter_x, ++iter_y, ++iter_z, ++iter_i) {
                 float disparity = (float)disparity_row[u] / m_depth_decimation_factor / m_scale;
-                float intensity = image_row[u*m_depth_decimation_factor];
+                float intensity = image_row[u];
 
                 // Missing points denoted by zero
                 if (disparity == 0) {
