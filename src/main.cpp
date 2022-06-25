@@ -47,6 +47,7 @@ int main(int argc, char **argv)
     ros::NodeHandle nh_local("~");
 
 
+    std::string option_tf_prefix;
     int option_frequency;
     int option_resolution;
     std::string option_exposure_mode;
@@ -66,7 +67,7 @@ int main(int argc, char **argv)
     int option_ir_laser_dot;
     int option_ir_floodlight;
 
-
+    nh_local.param<std::string>("tf_prefix", option_tf_prefix, "");
     nh_local.param<int>("frequency", option_frequency, -1);
     nh_local.param<int>("resolution", option_resolution, 480);
     nh_local.param<bool>("stereo", option_stereo, true);
@@ -151,6 +152,8 @@ int main(int argc, char **argv)
             }
                 
         }
+
+        params.tf_prefix = option_tf_prefix;
         
         params.exposure_compensation = option_exposure_compensation;
         params.ir_laser_dot = option_ir_laser_dot;

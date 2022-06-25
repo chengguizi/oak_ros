@@ -77,10 +77,12 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
                     continue;
                 }
 
+                // camera is originally in RDF, but we would like to have NWU
+
                 // Fill in XYZ
-                *iter_x = (u - m_cu) * depth / constant_x;
-                *iter_y = (v - m_cv) * depth / constant_y;
-                *iter_z = depth;
+                *iter_x = depth;
+                *iter_y = - (u - m_cu) * depth / constant_x;
+                *iter_z = - (v - m_cv) * depth / constant_y;
             }
         }
     } else {
@@ -127,9 +129,11 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
                 }
 
                 // Fill in XYZ
-                *iter_x = (u - m_cu) * depth / constant_x;
-                *iter_y = (v - m_cv) * depth / constant_y;
-                *iter_z = depth;
+
+                // convert RDF to NWU
+                *iter_x = depth;
+                *iter_y = - (u - m_cu) * depth / constant_x;
+                *iter_z = - (v - m_cv) * depth / constant_y;
                 *iter_i = intensity;
             }
         }

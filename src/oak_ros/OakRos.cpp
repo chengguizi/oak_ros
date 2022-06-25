@@ -491,6 +491,9 @@ void OakRos::run() {
                                                                    // the same as the right
                         rightCameraInfo = getCameraInfo(right, dai::CameraBoardSocket::RIGHT);
                     }
+
+                    leftCameraInfo.header.frame_id = m_params.tf_prefix + "left_camera_optical_frame";
+                    rightCameraInfo.header.frame_id = m_params.tf_prefix + "right_camera_optical_frame";
                 }
 
                 // if (lastSeq && seqLeft - 3 != lastSeq)
@@ -610,8 +613,13 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
 
     }
 
-    if (!right.get())
-        spdlog::warn("failed to find depthmono frame with seq {}", seq);
+    if (!right.get()){
+        spdlog::warn("failed to find depthmono frame with seq {}, skip", seq);
+        return;
+    }
+
+    double tsRight = right->getTimestamp().time_since_epoch().count() / 1.0e9;
+        
     // m_mutex.unlock();
 
     if (lastDispSeq != 0 && seq > lastDispSeq + 1) {
@@ -632,7 +640,7 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
 
             m_outDispImageMsg.reset(new stereo_msgs::DisparityImage);
 
-            m_outDispImageMsg->header.frame_id = "right_camera_optical_frame";
+            m_outDispImageMsg->header.frame_id = m_params.tf_prefix + "right_camera_optical_frame";
 
             dai::CalibrationHandler calibData = m_device->readCalibration();
             std::vector<std::vector<float>> intrinsics = calibData.getCameraIntrinsics(
@@ -673,6 +681,9 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
         outImageMsg.width = disparityFrame->getWidth();
         outImageMsg.step = size / disparityFrame->getHeight();
         outImageMsg.is_bigendian = true;
+
+        // timestamp
+        m_outDispImageMsg->header.stamp = ros::Time().fromSec(tsRight);
 
         if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW8) {
             // spdlog::info("raw 8 type");
@@ -759,13 +770,16 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
             m_disparity2PointCloudConverter.reset(new OakPointCloudConverter(
                 fx, fy, cu, cv, baseline, m_params.depth_decimation_factor));
 
-            m_cloudMsgFromDisp->header.stamp = ros::Time().fromSec(ts);
-            m_cloudMsgFromDisp->header.frame_id = "base_link";
+            // TODO: the frame should be right_camera instead of directly base_link, need to fix
+            m_cloudMsgFromDisp->header.frame_id = m_params.tf_prefix + "base_link_nwu"; // "right_camera_nwu";
             m_cloudMsgFromDisp->height = disparityFrame->getHeight();
             m_cloudMsgFromDisp->width = disparityFrame->getWidth();
             m_cloudMsgFromDisp->is_dense = false;
             m_cloudMsgFromDisp->is_bigendian = false;
         }
+
+        // timestamp
+        m_cloudMsgFromDisp->header.stamp = ros::Time().fromSec(tsRight);
 
         if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW8) {
             m_disparity2PointCloudConverter->Disparity2PointCloud<uint8_t>(disparityFrame, right, m_cloudMsgFromDisp);

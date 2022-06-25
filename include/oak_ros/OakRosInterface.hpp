@@ -40,6 +40,7 @@ struct OakRosParams
 {
     std::string device_id;
     std::string topic_name = "oak";
+    std::string tf_prefix;
 
     bool only_usb2_mode = false;
 
