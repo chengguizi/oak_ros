@@ -5,7 +5,7 @@
     <arg name="exposure_mode" default="auto"/>
     <arg name="shutter_speed_us" default="1400"/>
     <arg name="iso" default="200"/>
-    <arg name="exposure_compensation" default="0"/>
+    <arg name="exposure_compensation" default="-1"/>
     <arg name="ir_laser_dot" default="0"/>
     <arg name="ir_floodlight" default="0"/>
     <arg name="debug_opencv_image" default="false"/>
