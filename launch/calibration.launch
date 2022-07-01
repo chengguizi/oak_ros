@@ -11,9 +11,9 @@
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
         <param name="imu" value="false"/> 
         <param name="rgb" value="true"/>
-        <param name="left" value="false"/>
-        <param name="right" value="true"/> 
-        <param name="camd" value="true"/>
+        <param name="left" value="true"/>
+        <param name="right" value="false"/> 
+        <param name="camd" value="false"/>
         <param name="hardware_sync" value="true"/> 
         <param name="debug_opencv_image" value="true"/> 
     </node>
