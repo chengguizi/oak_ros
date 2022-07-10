@@ -1,10 +1,12 @@
 #include "OakRos.hpp"
 
 #include <chrono>
+#include <thread>
 
 #include <cv_bridge/cv_bridge.h>
 
 #include "oak_ros/PointCloudConverter.hpp"
+#include "oak_ros/MeshDataGenerator.hpp"
 
 void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
 
@@ -18,6 +20,27 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
     m_stereo_seq_throttle = 1;
 
     spdlog::info("initialising device {}", m_params.device_id);
+
+    // obtain calibration
+    {
+        spdlog::info("Obtaining Calibration Data");
+        std::shared_ptr<dai::Device> device;
+        dai::Pipeline pipeline;
+        if (m_params.device_id.empty()) {
+            // spdlog::info("Creating device without specific id");
+            device = std::make_shared<dai::Device>(pipeline);
+        } else {
+            // spdlog::info("Creating device with specific id {}", m_params.device_id);
+            device = std::make_shared<dai::Device>(pipeline, getDeviceInfo(m_params.device_id));
+        }
+
+        m_calibData = device->readCalibration();
+        
+        spdlog::info("Obtained Calibration Data");
+
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     m_stereo_is_rectified = false;
 
@@ -204,10 +227,8 @@ void OakRos::configureStereo() {
     if (m_params.enable_stereo || m_params.enable_depth || m_params.enable_disparity ||
         m_params.enable_pointcloud) {
 
-        if (m_params.stereo_resolution) {
-            m_monoLeft->setResolution(m_params.stereo_resolution.value());
-            m_monoRight->setResolution(m_params.stereo_resolution.value());
-        }
+        m_monoLeft->setResolution(m_params.stereo_resolution);
+        m_monoRight->setResolution(m_params.stereo_resolution);
 
         m_monoLeft->setBoardSocket(dai::CameraBoardSocket::LEFT);
         m_monoRight->setBoardSocket(dai::CameraBoardSocket::RIGHT);
@@ -247,7 +268,6 @@ void OakRos::configureStereo() {
             stereoDepth->setLeftRightCheck(true);
             stereoDepth->setExtendedDisparity(false);
             stereoDepth->setSubpixel(true);
-            // stereoDepth->useHomographyRectification(false);
 
             // ref
             // https://github.com/matthewoots/depthai-mapping/blob/master/src/depth_publisher.cpp
@@ -281,12 +301,16 @@ void OakRos::configureStereo() {
 
             stereoDepth->initialConfig.set(PostConfig);
 
-            // Load Mesh Data
+            // setup mesh
             if (m_params.use_mesh) {
+                stereoDepth->useHomographyRectification(false);
                 std::vector<std::uint8_t> dataLeft, dataRight;
                 constexpr int meshStep = 16;
-                calculateMeshData(meshStep, dai::CameraBoardSocket::LEFT,
-                                  dai::CameraBoardSocket::RIGHT, dataLeft, dataRight);
+
+                OakMeshDataGenerator meshGen;
+                meshGen.getRectificationTransformFromOpenCV(m_calibData, dai::CameraBoardSocket::LEFT, dai::CameraBoardSocket::RIGHT, m_params.stereo_resolution);
+                meshGen.calculateMeshData(meshStep, dataLeft, dataRight);
+
                 spdlog::warn("Use Generated mesh data for un-distortion and rectification");
                 stereoDepth->loadMeshData(dataLeft, dataRight);
             }
@@ -934,8 +958,3 @@ dai::DeviceInfo OakRos::getDeviceInfo(const std::string &device_id) {
     spdlog::error("failed to find device with id {}", device_id);
     throw std::runtime_error("");
 }
-
-void OakRos::calculateMeshData(int meshStep, const dai::CameraBoardSocket socketLeft,
-                               const dai::CameraBoardSocket socketRight,
-                               std::vector<std::uint8_t> &leftData,
-                               std::vector<std::uint8_t> &rightData) {}
