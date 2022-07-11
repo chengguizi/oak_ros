@@ -47,11 +47,16 @@ int main(int argc, char **argv)
     ros::NodeHandle nh_local("~");
 
 
+    std::string option_tf_prefix;
     int option_frequency;
     int option_resolution;
     std::string option_exposure_mode;
+    bool option_stereo;
     bool option_depth;
-    std::string option_mesh_dir;
+    bool option_disparity;
+    bool option_pointcloud;
+    int option_depth_decimation_factor;
+    bool option_use_mesh;
     bool option_rectified;
     bool option_rates_workaround;
     bool option_poe_mode;
@@ -62,11 +67,15 @@ int main(int argc, char **argv)
     int option_ir_laser_dot;
     int option_ir_floodlight;
 
-
+    nh_local.param<std::string>("tf_prefix", option_tf_prefix, "");
     nh_local.param<int>("frequency", option_frequency, -1);
     nh_local.param<int>("resolution", option_resolution, 480);
+    nh_local.param<bool>("stereo", option_stereo, true);
     nh_local.param<bool>("depth", option_depth, false);
-    nh_local.param<std::string>("mesh_dir", option_mesh_dir, "");
+    nh_local.param<bool>("disparity", option_disparity, false);
+    nh_local.param<bool>("pointcloud", option_pointcloud, false);
+    nh_local.param<int>("depth_decimation_factor", option_depth_decimation_factor, 1);
+    nh_local.param<bool>("use_mesh", option_use_mesh, false);
     nh_local.param<bool>("rectified", option_rectified, true);
     nh_local.param<std::string>("exposure_mode", option_exposure_mode, "auto");
     nh_local.param<int>("shutter_speed_us", option_shutter_speed_us, 1000);
@@ -143,6 +152,8 @@ int main(int argc, char **argv)
             }
                 
         }
+
+        params.tf_prefix = option_tf_prefix;
         
         params.exposure_compensation = option_exposure_compensation;
         params.ir_laser_dot = option_ir_laser_dot;
@@ -151,13 +162,17 @@ int main(int argc, char **argv)
         params.only_usb2_mode = option_only_usb2_mode;
 
         params.enable_depth = option_depth;
+        params.enable_disparity = option_disparity;
+        params.enable_pointcloud = option_pointcloud;
+        params.depth_decimation_factor = option_depth_decimation_factor;
         
         params.device_id = id;
         params.topic_name = "oak" + std::to_string(topic_name_seq);
 
         params.rates_workaround = option_rates_workaround;
+        params.enable_stereo = option_stereo;
         params.enable_stereo_rectified = option_rectified;
-        params.enable_mesh_dir = option_mesh_dir;
+        params.use_mesh = option_use_mesh;
 
         if (option_resolution == 480)
             params.stereo_resolution = dai::MonoCameraProperties::SensorResolution::THE_480_P;

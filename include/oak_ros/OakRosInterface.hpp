@@ -20,7 +20,7 @@
  * @param stereo_fps_throttle optional parameter to specify framerate by using on-device script for frame dropping
  * 
  * @param enable_depth boolean to enable depth stream (TODO: not yet implemented)
- * @param enable_depth_pointcloud TODO: not yet implemented
+ * @param enable_disparity boolean to enable disparity stream
  * 
  * @param enable_rgb boolean to enable rgb stream (TODO: not yet implemented)
  * @param rgb_resolution optional parameter to specify the preferred rgb resolution
@@ -33,8 +33,6 @@
  * @param manual_exposure optional parameter to set manual exposure
  * @param manual_iso optional parameter to set manual iso, has to be used together with @manual_exposure
  * 
- * @param enable_apriltag boolean to enable apriltag detection streaming
- * 
  * @note
  */
 
@@ -42,19 +40,22 @@ struct OakRosParams
 {
     std::string device_id;
     std::string topic_name = "oak";
+    std::string tf_prefix;
 
     bool only_usb2_mode = false;
 
     bool enable_stereo = true;
     bool enable_stereo_rectified = true;
-    std::string enable_mesh_dir; 
-    std::optional<dai::MonoCameraProperties::SensorResolution> stereo_resolution = {}; // dai::MonoCameraProperties::SensorResolution::THE_480_P
+    bool use_mesh = false; 
+    dai::MonoCameraProperties::SensorResolution stereo_resolution; // dai::MonoCameraProperties::SensorResolution::THE_480_P
 
     std::optional<float> stereo_fps = {};
     std::optional<int> stereo_fps_throttle = {};
 
-    bool enable_depth = true;
-    bool enable_depth_pointcloud = false;
+    bool enable_depth = false;
+    bool enable_disparity = false;
+    bool enable_pointcloud = false;
+    int depth_decimation_factor = 1;
     // dai::StereoDepthProperties
 
     bool enable_rgb = false;
@@ -73,7 +74,6 @@ struct OakRosParams
     int ir_laser_dot = 0; // in mA: 0 - 1200
     int ir_floodlight = 0; // in mA: 0 - 1500
 
-    bool enable_apriltag = false;
 };
 
 class OakRosInterface

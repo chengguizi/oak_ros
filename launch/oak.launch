@@ -1,20 +1,27 @@
 <launch>
     <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
     <arg name="vehicle" default="$(arg _uav_id)"/>
-    <arg name="resolution" default="480"/>
+    <arg name="resolution" default="400"/>
     <arg name="exposure_mode" default="auto"/>
     <arg name="shutter_speed_us" default="12000"/>
     <arg name="iso" default="600"/>
-    <arg name="exposure_compensation" default="0"/>
+    <arg name="exposure_compensation" default="-1"/>
     <arg name="ir_laser_dot" default="0"/>
     <arg name="ir_floodlight" default="0"/>
 
     <node ns="$(arg vehicle)" pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
+        <param name="tf_prefix" type = "string" value="$(arg vehicle)/"/>
         <param name="resolution" value="$(arg resolution)"/>
         <param name="frequency" value="15"/>
         <param name="poe_mode" value="false"/>
-        <param name="only_usb2_mode" value="true"/>
-        <param name="mesh_dir" type ="string" value="$(find oak_ros)/data"/> 
+        <param name="depth" value="false"/>
+        <param name="stereo" value="true"/>
+        <param name="rectified" value="false"/>
+        <param name="disparity" value="true"/>
+        <param name="pointcloud" value="true"/>
+        <param name="depth_decimation_factor" value="2"/>
+        <param name="only_usb2_mode" value="false"/>
+        <param name="use_mesh" value="false"/> <!-- use internal intrinsics in EEPROM to generate sparse mesh, instead of built-in homography rectification -->
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
         <param name="shutter_speed_us" value="$(arg shutter_speed_us)"/>
         <param name="iso" value="$(arg iso)"/>
