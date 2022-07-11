@@ -48,7 +48,7 @@ def getDistortionCoeffsFisheye(intrinsics):
 
 def getRt(T):
 
-    return T[0:3, 0:3], T[0:3, 3] * 100
+    return T[0:3, 0:3], T[0:3, 3]
 
 
 # Connect device
@@ -147,7 +147,7 @@ with dai.Device() as device:
     print(leftt)
 
     # translation in cm
-    calibData.setCameraExtrinsics(leftId, rightId, leftR, leftt, [-5.5,0,0])
+    calibData.setCameraExtrinsics(leftId, rightId, leftR, leftt * 100, [-5.5,0,0])
 
     calibData.setFov(leftId, 105)
     calibData.setFov(rightId, 105)
@@ -156,7 +156,7 @@ with dai.Device() as device:
 
     # The step 4 is not necessary, as we shall calculate online
 
-    R1, R2, P1, P2, Q = cv2.fisheye.stereoRectify(leftIntrinsic, leftD[0:4], rightIntrinsic, rightD[0:4], (leftResolution[0], leftResolution[1]), leftR, leftt, 0)
+    R1, R2, P1, P2, Q = cv2.fisheye.stereoRectify(leftIntrinsic, leftD[0:4], rightIntrinsic, rightD[0:4], (leftResolution[0], leftResolution[1]), leftR, leftt, cv2.CALIB_ZERO_DISPARITY)
 
     print(f"R1\n{R1}")
     print(f"R2\n{R2}")
