@@ -785,6 +785,19 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
 
     spdlog::info("{} disparity seq = {}, ts = {}", m_params.device_id, seq, ts);
 
+    const float baseline = m_calibData.getBaselineDistance(m_socketMapping[rightName],
+                                                           m_socketMapping[leftName], false) /
+                             100.;
+
+    std::vector<std::vector<float>> intrinsics = m_calibData.getCameraIntrinsics(
+                m_socketMapping[rightName], disparityFrame->getWidth(),
+                disparityFrame->getHeight());
+
+    float fx = intrinsics[0][0];
+    float fy = intrinsics[1][1];
+    float cu = intrinsics[0][2];
+    float cv = intrinsics[1][2];
+
     if (m_params.enable_disparity) {
 
         if (!m_disparityPubMap.count(name)) {
@@ -796,24 +809,12 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
 
             m_outDispImageMsgMap[name]->header.frame_id = m_params.tf_prefix + rightName + "_camera_optical_frame";
 
-            dai::CalibrationHandler calibData = m_device->readCalibration();
-            std::vector<std::vector<float>> intrinsics = calibData.getCameraIntrinsics(
-                m_socketMapping[rightName] , disparityFrame->getWidth(),
-                disparityFrame->getHeight());
+            
 
-            float fx = intrinsics[0][0];
-            float fy = intrinsics[1][1];
-            float cu = intrinsics[0][2];
-            float cv = intrinsics[1][2];
-
-            float baseline = calibData.getBaselineDistance(m_socketMapping[rightName],
-                                                           m_socketMapping[leftName], false) /
-                             100.;
-
-            float _focalLength = 880;
-            float _baseline = 0.075;
-            float _maxDepth = 10;
-            float _minDepth = 0.1;
+            // float _focalLength = 880;
+            // float _baseline = 0.075;
+            // float _maxDepth = 10;
+            // float _minDepth = 0.1;
             m_outDispImageMsgMap[name]->f = (fx + fy) / 2.;
             // outDispImageMsg.min_disparity = _focalLength * _baseline / _maxDepth;
             // outDispImageMsg.max_disparity = _focalLength * _baseline / _minDepth;
@@ -933,6 +934,42 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
         double tsRight = right->getTimestamp().time_since_epoch().count() / 1.0e9;
 
         assert (ts == tsRight);
+
+        if (!m_cloudPubFromDispMap.count(name)) {
+            m_cloudPubFromDispMap.emplace(name, new auto(
+                m_nh.advertise<sensor_msgs::PointCloud2>(m_params.topic_name + "/pointcloud", 10)));
+            spdlog::info(
+                "{} received first disparity image message! used for pointcloud generation",
+                m_params.device_id);
+
+            m_cloudMsgFromDispMap.emplace(name, new sensor_msgs::PointCloud2);
+        }
+
+        if (!m_disparity2PointCloudConverterMap.count(name)) {
+
+            m_disparity2PointCloudConverterMap.emplace(name, new OakPointCloudConverter(
+                fx, fy, cu, cv, baseline, m_params.depth_decimation_factor));
+
+            // TODO: the frame should be right_camera instead of directly base_link, need to fix
+            m_cloudMsgFromDispMap[name]->header.frame_id = m_params.tf_prefix + "base_link_nwu"; // "right_camera_nwu";
+            m_cloudMsgFromDispMap[name]->height = disparityFrame->getHeight();
+            m_cloudMsgFromDispMap[name]->width = disparityFrame->getWidth();
+            m_cloudMsgFromDispMap[name]->is_dense = false;
+            m_cloudMsgFromDispMap[name]->is_bigendian = false;
+        }
+
+        // timestamp
+        m_cloudMsgFromDispMap[name]->header.stamp = ros::Time().fromSec(tsRight);
+
+        if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW8) {
+            m_disparity2PointCloudConverterMap[name]->Disparity2PointCloud<uint8_t>(disparityFrame, right, m_cloudMsgFromDispMap[name]);
+        } else if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW16) {
+            m_disparity2PointCloudConverterMap[name]->setScale(8); // default 3 bit fractional
+            m_disparity2PointCloudConverterMap[name]->Disparity2PointCloud<uint16_t>(disparityFrame, right, m_cloudMsgFromDispMap[name]);
+        } else
+            throw std::runtime_error("not implemented");
+
+        m_cloudPubFromDispMap[name]->publish(m_cloudMsgFromDispMap[name]);
     }
 }
 
