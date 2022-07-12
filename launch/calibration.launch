@@ -1,5 +1,5 @@
 <launch>
-    <arg name="resolution" default="400"/>
+    <arg name="resolution" default="800"/>
     <arg name="exposure_mode" default="calibration"/>
 
     <node pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
