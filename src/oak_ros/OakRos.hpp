@@ -13,6 +13,12 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/Imu.h>
 
+#include "sensor_msgs/PointCloud2.h"
+#include "sensor_msgs/image_encodings.h"
+#include "stereo_msgs/DisparityImage.h"
+
+class OakPointCloudConverter;
+
 #include <set>
 
 class ImuInterpolation {
@@ -87,30 +93,40 @@ class OakRos : public OakRosInterface {
   private:
     bool m_running;
     OakRosParams m_params;
-    bool m_stereo_is_rectified;
 
     int restartCount = 0;
 
-    // 1 means no throttling, only publish every N frames
-    double lastGyroTs;
-    std::string m_masterCamera;
+    double lastGyroTs; // use only in non-interpolation mode of imu
+    std::map<std::string, unsigned int> m_lastDispSeqMap;
+    std::string m_masterCamera; // store the name of the master triggering camera
 
     std::string m_device_id;
     std::string m_topic_name;
 
     dai::Pipeline m_pipeline;
+    dai::CalibrationHandler m_calibData;
 
     std::shared_ptr<dai::Device> m_device;
     std::shared_ptr<dai::DataOutputQueue> m_imuQueue;
     std::map<std::string, std::shared_ptr<dai::DataOutputQueue>> m_cameraQueueMap;
-    std::map<std::string, std::shared_ptr<dai::DataOutputQueue>> m_depthQueueMap;
+    std::map<std::string, std::shared_ptr<dai::DataOutputQueue>> m_depthQueueMap, m_disparityQueueMap, m_depthMonoQueueMap;
 
     std::shared_ptr<dai::DataInputQueue> m_controlQueue;
 
-    std::shared_ptr<dai::node::IMU> m_imu;
+    std::shared_ptr<dai::node::IMU> m_imu; // assume there is only one imu sensor in the system
     std::map<std::string, std::shared_ptr<dai::node::MonoCamera>> m_cameraMap;
     std::map<std::string, dai::CameraBoardSocket> m_cameraSocketMap;
+
+    // this is a constant mapping from the string to the corresponding socket enum
+    std::map<std::string, dai::CameraBoardSocket> m_socketMapping = {
+        {"rgb", dai::CameraBoardSocket::RGB},
+        {"left", dai::CameraBoardSocket::LEFT},
+        {"right", dai::CameraBoardSocket::RIGHT},
+        {"camd", dai::CameraBoardSocket::CAM_D}};
+
+    // map of pairs of stereo
     std::map<std::string, std::shared_ptr<dai::node::StereoDepth>> m_stereoDepthMap;
+    std::map<std::string, std::shared_ptr<dai::node::ImageManip>> m_imageManipMap;
 
     std::thread m_run, m_watchdog;
     void run();
@@ -119,19 +135,20 @@ class OakRos : public OakRosInterface {
     std::shared_ptr<dai::node::XLinkIn> configureControl();
     void configureImu();
     void configureCameras();
+    void configureStereos();
     void configureCamera(std::string cameraName);
 
     // the functions below assumes m_device is properly setup
     void setupControlQueue(std::shared_ptr<dai::node::XLinkIn>);
     void setupImuQueue();
-    void setupCameraQueue(std::string cameraName);
 
     void configureDepthNode(std::shared_ptr<dai::node::StereoDepth> stereoDepth,
                             std::shared_ptr<dai::node::MonoCamera> left,
                             std::shared_ptr<dai::node::MonoCamera> right,
                             std::shared_ptr<dai::node::XLinkOut> xoutDepth);
 
-    // void depthCallback(std::shared_ptr<dai::ADatatype> data);
+    void depthCallback(std::shared_ptr<dai::ADatatype> data, std::string name);
+    void disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string name);
     void imuCallback(std::shared_ptr<dai::ADatatype> data);
 
     std::set<dai::CameraBoardSocket> m_noCalib;
@@ -145,4 +162,13 @@ class OakRos : public OakRosInterface {
     std::map<std::string, std::shared_ptr<image_transport::CameraPublisher>> m_cameraPubMap;
     std::shared_ptr<ros::Publisher> m_imuPub;
     std::shared_ptr<ImuInterpolation> imuInterpolation;
+
+    // for disparity, depth and point cloud
+    std::map<std::string, std::shared_ptr<ros::Publisher>> m_disparityPubMap, m_cloudPubFromDispMap;
+    std::map<std::string, sensor_msgs::PointCloud2::Ptr> m_cloudMsgFromDispMap;
+    std::map<std::string, stereo_msgs::DisparityImage::Ptr> m_outDispImageMsgMap;
+    std::map<std::string, std::shared_ptr<OakPointCloudConverter>> m_disparity2PointCloudConverterMap;
+
+    // store a short history of the right frames (one of the stereo pair cameras) for monod / rgbd pointcloud output
+    std::map<std::string, std::queue<std::shared_ptr<dai::ImgFrame>>> m_rightFrameHistoryMap;
 };

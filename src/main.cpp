@@ -53,12 +53,11 @@ int main(int argc, char **argv) {
     ros::NodeHandle nh;
     ros::NodeHandle nh_local("~");
 
+    std::string option_tf_prefix;
     int option_frequency;
     int option_resolution;
     std::string option_exposure_mode;
-    bool option_depth_left_right;
-    bool option_depth_rgb_camd;
-    // std::string option_mesh_dir;
+    bool option_use_mesh;
     // bool option_rectified;
     bool option_poe_mode;
     bool option_only_usb2_mode;
@@ -74,14 +73,18 @@ int main(int argc, char **argv) {
     bool option_right;
     bool option_rgb;
     bool option_camd;
+    bool option_enable_stereo_rectified;
+    bool option_enable_disparity;
+    bool option_enable_depth;
+    bool option_enable_pointcloud;
+    int option_depth_decimation_factor;
     bool option_hardware_sync;
     bool option_debug_opencv_image;
 
+    nh_local.param<std::string>("tf_prefix", option_tf_prefix, "");
     nh_local.param<int>("frequency", option_frequency, -1);
     nh_local.param<int>("resolution", option_resolution, 480);
-    nh_local.param<bool>("depth_left_right", option_depth_left_right, false);
-    nh_local.param<bool>("depth_rgb_camd", option_depth_rgb_camd, false);
-    // nh_local.param<std::string>("mesh_dir", option_mesh_dir, "");
+    nh_local.param<bool>("use_mesh", option_use_mesh, false);
     // nh_local.param<bool>("rectified", option_rectified, true);
     nh_local.param<std::string>("exposure_mode", option_exposure_mode, "auto");
     nh_local.param<int>("shutter_speed_us", option_shutter_speed_us, 1000);
@@ -98,6 +101,11 @@ int main(int argc, char **argv) {
     nh_local.param<bool>("right", option_right, true);
     nh_local.param<bool>("rgb", option_rgb, false);
     nh_local.param<bool>("camd", option_camd, false);
+    nh_local.param<bool>("enable_stereo_rectified", option_enable_stereo_rectified, false);
+    nh_local.param<bool>("enable_disparity", option_enable_disparity, false);
+    nh_local.param<bool>("enable_depth", option_enable_depth, false);
+    nh_local.param<bool>("enable_pointcloud", option_enable_pointcloud, false);
+    nh_local.param<int>("depth_decimation_factor", option_depth_decimation_factor, 1);
     nh_local.param<bool>("hardware_sync", option_hardware_sync, true);
     nh_local.param<bool>("debug_opencv_image", option_debug_opencv_image, true);
 
@@ -153,14 +161,21 @@ int main(int argc, char **argv) {
             }
         }
 
+        params.tf_prefix = option_tf_prefix;
+
         params.exposure_compensation = option_exposure_compensation;
         params.ir_laser_dot = option_ir_laser_dot;
         params.ir_floodlight = option_ir_floodlight;
 
         params.only_usb2_mode = option_only_usb2_mode;
 
-        params.enable_depth_left_right = option_depth_left_right;
-        params.enable_depth_rgb_camd = option_depth_rgb_camd;
+        params.enable_stereo_rectified = option_enable_stereo_rectified;
+        params.enable_disparity = option_enable_disparity;
+        params.enable_depth = option_enable_depth;
+        params.enable_pointcloud = option_enable_pointcloud;
+        params.depth_decimation_factor = option_depth_decimation_factor;
+
+        params.use_mesh = option_use_mesh;
 
         params.device_id = id;
         params.topic_name = "oak" + std::to_string(topic_name_seq);
@@ -179,6 +194,8 @@ int main(int argc, char **argv) {
         params.hardware_sync = option_hardware_sync;
 
         params.debug_opencv_images = option_debug_opencv_image;
+
+        params.enabled_stereo_pairs = {{"left_rgb", {"left", "rgb"}}};
 
         configureResolution(params, option_resolution);
 

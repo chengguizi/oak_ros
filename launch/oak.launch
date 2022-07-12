@@ -11,17 +11,18 @@
     <arg name="debug_opencv_image" default="false"/>
 
     <node ns="$(arg vehicle)" pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
+        <param name="tf_prefix" type = "string" value="$(arg vehicle)/"/>
         <param name="resolution" value="$(arg resolution)"/>
-        <param name="frequency" value="25"/>
+        <param name="frequency" value="15"/>
         <param name="rates_workaround" value="false"/>
         <param name="poe_mode" value="false"/>
         <param name="only_usb2_mode" value="true"/>
-        <!-- <param name="mesh_dir" type ="string" value="$(find oak_ros)/data"/>  -->
+        <param name="use_mesh" value="true"/> 
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
         <param name="shutter_speed_us" value="$(arg shutter_speed_us)"/>
         <param name="iso" value="$(arg iso)"/>
         <param name="exposure_compensation" value="$(arg exposure_compensation)"/>
-        <param name="rectified" value="false"/> 
+        <param name="rectified" value="true"/> 
         <param name="ir_laser_dot" value="$(arg ir_laser_dot)"/>
         <param name="ir_floodlight" value="$(arg ir_floodlight)"/>
         <param name="imu" value="true"/> 
@@ -31,8 +32,11 @@
         <param name="camd" value="false"/>
         <param name="imu_frequency" value="200"/>
         <param name="imu_use_raw" value="false"/> 
-        <param name="depth_left_right" value="false"/>
-        <param name="depth_rgb_camd" value="false"/>
+        <param name="enable_stereo_rectified" value="true"/>
+        <param name="enable_disparity" value="true"/>
+        <param name="enable_depth" value="false"/>
+        <param name="enable_pointcloud" value="false"/>
+        <param name="depth_decimation_factor" value="1"/>
         <param name="hardware_sync" value="true"/> 
         <param name="debug_opencv_image" value="$(arg debug_opencv_image)"/> 
     </node>

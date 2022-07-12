@@ -2,8 +2,12 @@
 
 #include <algorithm>
 #include <chrono>
+#include <algorithm>
 
 #include <cv_bridge/cv_bridge.h>
+
+#include "oak_ros/PointCloudConverter.hpp"
+#include "oak_ros/MeshDataGenerator.hpp"
 
 std::vector<sensor_msgs::Imu>
 ImuInterpolation::updatePacket(const dai::IMUReportAccelerometer &accel,
@@ -100,7 +104,30 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
 
     spdlog::info("initialising device {}", m_params.device_id);
 
+    // obtain calibration
+    {
+        spdlog::info("Obtaining Calibration Data");
+        std::shared_ptr<dai::Device> device;
+        dai::Pipeline pipeline;
+        if (m_params.device_id.empty()) {
+            // spdlog::info("Creating device without specific id");
+            device = std::make_shared<dai::Device>(pipeline);
+        } else {
+            // spdlog::info("Creating device with specific id {}", m_params.device_id);
+            device = std::make_shared<dai::Device>(pipeline, getDeviceInfo(m_params.device_id));
+        }
+
+        m_calibData = device->readCalibration();
+
+        spdlog::info("Obtained Calibration Data");
+
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
     configureCameras();
+
+    configureStereos();
 
     // alway try to see if IMU stream is there
     if (m_params.enable_imu)
@@ -166,9 +193,20 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
             m_params.topic_name + "/" + cameraName + "/image_rect_raw", 3)));
     }
 
-    for (auto &item : m_stereoDepthMap) {
-        auto &stereoDepthName = item.first;
-        m_depthQueueMap[stereoDepthName] = m_device->getOutputQueue(stereoDepthName, 2, false);
+    for (auto& item : m_stereoDepthMap) {
+
+        std::string nodeName = item.first;
+
+        if (m_params.enable_depth)
+            m_depthQueueMap[nodeName] = m_device->getOutputQueue("depth_" + nodeName, 2, false);
+
+        if (m_params.enable_disparity || m_params.enable_pointcloud) {
+            
+            m_disparityQueueMap[nodeName] = m_device->getOutputQueue("disparity_" + nodeName, 2, false);
+
+            if (m_params.enable_pointcloud)
+                m_depthMonoQueueMap[nodeName] = m_device->getOutputQueue("depthmono_" + nodeName, 2, false);
+        }
     }
 
     if (m_params.enable_imu) {
@@ -251,16 +289,19 @@ void OakRos::configureImu() {
 }
 
 void OakRos::configureCamera(std::string cameraName) {
-    auto xout = m_pipeline.create<dai::node::XLinkOut>();
-    xout->setStreamName(cameraName);
+    
+    const bool part_of_stereo_pairs = std::any_of(m_params.enabled_stereo_pairs.cbegin(), m_params.enabled_stereo_pairs.cend(), 
+        [cameraName](const auto& e){ return e.second.first == cameraName || e.second.second == cameraName;});
 
-    spdlog::info("Enable {} socket camera...", cameraName);
+    spdlog::info("Enable {} socket camera, part of stereo pair = {}", cameraName, part_of_stereo_pairs ? "true" : "false");
     m_cameraMap[cameraName] = m_pipeline.create<dai::node::MonoCamera>();
 
     auto &camera = m_cameraMap[cameraName];
 
     if (m_params.resolutionMap.count(cameraName)) {
         camera->setResolution(m_params.resolutionMap[cameraName]);
+    }else {
+        throw std::runtime_error("expect resolution to be defined explicitly for each camera");
     }
 
     camera->setBoardSocket(m_cameraSocketMap[cameraName]);
@@ -269,7 +310,16 @@ void OakRos::configureCamera(std::string cameraName) {
         camera->setFps(m_params.all_cameras_fps.value());
     }
 
-    camera->out.link(xout->input);
+    // we only establish xlink with the raw camera output if the camera:
+    // - is not part of the stereo pairs
+
+    if (!part_of_stereo_pairs) {
+        auto xout = m_pipeline.create<dai::node::XLinkOut>();
+        xout->setStreamName(cameraName);
+        camera->out.link(xout->input);
+
+        spdlog::info("output raw (un-rectified) images");
+    }
 }
 
 void OakRos::configureCameras() {
@@ -279,22 +329,22 @@ void OakRos::configureCameras() {
     std::shared_ptr<dai::node::StereoDepth> stereoDepth;
 
     if (m_params.enable_rgb) {
-        m_cameraSocketMap["rgb"] = dai::CameraBoardSocket::RGB;
+        m_cameraSocketMap["rgb"] = m_socketMapping["rgb"];
         configureCamera("rgb");
     }
 
     if (m_params.enable_left) {
-        m_cameraSocketMap["left"] = dai::CameraBoardSocket::LEFT;
+        m_cameraSocketMap["left"] = m_socketMapping["left"];
         configureCamera("left");
     }
 
     if (m_params.enable_right) {
-        m_cameraSocketMap["right"] = dai::CameraBoardSocket::RIGHT;
+        m_cameraSocketMap["right"] = m_socketMapping["right"];
         configureCamera("right");
     }
 
     if (m_params.enable_camD) {
-        m_cameraSocketMap["camd"] = dai::CameraBoardSocket::CAM_D;
+        m_cameraSocketMap["camd"] = m_socketMapping["camd"];
         configureCamera("camd");
     }
 
@@ -333,7 +383,167 @@ void OakRos::configureCameras() {
     }
 }
 
-void OakRos::setupCameraQueue(std::string cameraName) {}
+void OakRos::configureStereos() {
+
+    for (const auto& item : m_params.enabled_stereo_pairs) {
+
+        auto& name = item.first;
+        auto& pair = item.second;
+
+        spdlog::info("Configure stereo pair {}", name);
+        
+        const auto& leftName = pair.first;
+        const auto& rightName = pair.second;
+
+        const std::string nameStereo = leftName + "_" + rightName;
+
+        spdlog::info("configure stereo pair {}", nameStereo);
+
+        auto xoutLeft = m_pipeline.create<dai::node::XLinkOut>();
+        auto xoutRight = m_pipeline.create<dai::node::XLinkOut>();
+        xoutLeft->setStreamName(leftName);
+        xoutRight->setStreamName(rightName);
+
+        auto monoLeft = m_cameraMap.at(leftName);
+        auto monoRight = m_cameraMap.at(rightName);
+
+        if (!(m_params.enable_depth || m_params.enable_disparity || m_params.enable_pointcloud ||
+                 m_params.enable_stereo_rectified)) {
+            
+            spdlog::warn("stereo configured but not used for any outputs (depth, disparity, point cloud, or rectification)");
+            monoLeft->out.link(xoutLeft->input);
+            monoRight->out.link(xoutRight->input);
+
+        }else {
+            
+            auto stereoDepth = m_pipeline.create<dai::node::StereoDepth>();
+
+            m_stereoDepthMap[name] = stereoDepth;
+
+            stereoDepth->setDefaultProfilePreset(dai::node::StereoDepth::PresetMode::HIGH_DENSITY);
+            stereoDepth->setRectifyEdgeFillColor(0); // black, to better see the cutout
+            // stereoDepth->setInputResolution(1280, 720);
+            stereoDepth->initialConfig.setMedianFilter(dai::MedianFilter::KERNEL_7x7);
+            stereoDepth->setLeftRightCheck(true);
+            stereoDepth->setExtendedDisparity(false);
+            stereoDepth->setSubpixel(true);
+
+            auto PostConfig = stereoDepth->initialConfig.get();
+
+            PostConfig.postProcessing.speckleFilter.enable = true;
+
+            // Following realsense D435i
+            PostConfig.postProcessing.temporalFilter.enable = false;
+            // PostConfig.postProcessing.temporalFilter.alpha = 0.5;
+            // PostConfig.postProcessing.temporalFilter.delta = 20;
+
+            PostConfig.postProcessing.spatialFilter.enable = true;
+            // Following realsense D435i
+            PostConfig.postProcessing.spatialFilter.holeFillingRadius = 2;
+            PostConfig.postProcessing.spatialFilter.numIterations = 1;
+            // PostConfig.postProcessing.spatialFilter.alpha = 0.5;
+            // PostConfig.postProcessing.spatialFilter.delta = 20;
+
+            PostConfig.postProcessing.thresholdFilter.minRange = 100;
+            PostConfig.postProcessing.thresholdFilter.maxRange = 15000;
+
+            // Following realsense D435i
+            PostConfig.postProcessing.decimationFilter.decimationFactor =
+                m_params.depth_decimation_factor;
+
+            // median filter generate quite some delay
+            // PostConfig.postProcessing.decimationFilter.decimationMode =
+            //     dai::RawStereoDepthConfig::PostProcessing::DecimationFilter::DecimationMode::NON_ZERO_MEDIAN;
+
+            stereoDepth->initialConfig.set(PostConfig);
+
+            // setup mesh
+            if (m_params.use_mesh) {
+                for (auto& item : m_stereoDepthMap) {
+
+                    std::string name = item.first;
+                    auto& stereoDepth = item.second;
+
+                    constexpr int meshStep = 16;
+                    stereoDepth->useHomographyRectification(false);
+                    stereoDepth->setMeshStep(meshStep, meshStep);
+
+                    std::vector<std::uint8_t> dataLeft, dataRight;
+
+                    OakMeshDataGenerator meshGen;
+                    auto& leftName = m_params.enabled_stereo_pairs[name].first;
+                    auto& rightName = m_params.enabled_stereo_pairs[name].second;
+
+                    assert(m_params.resolutionMap[leftName] == m_params.resolutionMap[rightName]);
+
+                    meshGen.getRectificationTransformFromOpenCV(m_calibData, 
+                        m_socketMapping[leftName], 
+                        m_socketMapping[rightName], 
+                        m_params.resolutionMap[leftName]);
+                    
+                    meshGen.calculateMeshData(meshStep, dataLeft, dataRight);
+
+                    spdlog::warn("Use Generated mesh data for un-distortion and rectification on {}-{} pair", leftName, rightName);
+                    stereoDepth->loadMeshData(dataLeft, dataRight);
+                }
+            }
+
+            // Linking
+            monoLeft->out.link(stereoDepth->left);
+            monoRight->out.link(stereoDepth->right);
+
+            // depth output stream
+            if (m_params.enable_depth) {
+                spdlog::info("{} enabling depth streams for {}...", m_params.device_id, nameStereo);
+                auto xoutDepth = m_pipeline.create<dai::node::XLinkOut>();
+                xoutDepth->setStreamName("depth_" + nameStereo);
+                stereoDepth->depth.link(xoutDepth->input);
+            }
+
+            if (m_params.enable_disparity || m_params.enable_pointcloud) {
+                spdlog::info("{} enabling disparity stream for {}...", m_params.device_id, nameStereo);
+                auto xoutDisparity = m_pipeline.create<dai::node::XLinkOut>();
+                xoutDisparity->setStreamName("disparity_" + nameStereo);
+                stereoDepth->disparity.link(xoutDisparity->input);
+            }
+
+            // output rectified image for point cloud colorisation
+
+            if (m_params.enable_pointcloud) {
+
+                auto imageManip = m_imageManipMap[nameStereo] = m_pipeline.create<dai::node::ImageManip>();
+
+                spdlog::info("{} enabling pointcloud stream for {}...", m_params.device_id, nameStereo);
+
+                const int width = monoRight->getResolutionWidth();
+                const int height = monoRight->getResolutionHeight();
+
+                imageManip->initialConfig.setResize(width / m_params.depth_decimation_factor, height / m_params.depth_decimation_factor);
+
+                auto xoutDepthMono = m_pipeline.create<dai::node::XLinkOut>();
+                xoutDepthMono->setStreamName("depthmono_" + nameStereo);
+                
+                stereoDepth->rectifiedRight.link(imageManip->inputImage);
+                imageManip->out.link(xoutDepthMono->input);
+            }
+
+            if (!m_params.enable_stereo_rectified) {
+                spdlog::info("{} enabling raw stereo streams for {}...", m_params.device_id, nameStereo);
+                // output raw images
+                // stereoDepth->syncedLeft.link(xoutLeft->input);
+                // stereoDepth->syncedRight.link(xoutRight->input);
+                monoLeft->out.link(xoutLeft->input);
+                monoRight->out.link(xoutRight->input);
+            } else {
+                spdlog::info("{} enabling rectified stereo streams for {}...", m_params.device_id, nameStereo);
+                // output rectified images
+                stereoDepth->rectifiedLeft.link(xoutLeft->input);
+                stereoDepth->rectifiedRight.link(xoutRight->input);          
+            }
+        }
+    }
+
+}
 
 void OakRos::run() {
     m_running = true;
@@ -344,13 +554,28 @@ void OakRos::run() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     spdlog::info("{} OakRos running now", m_params.device_id);
 
-    dai::DataOutputQueue::CallbackId depthCallbackId, imuCallbackId;
+    dai::DataOutputQueue::CallbackId imuCallbackId;
+    std::map<std::string, dai::DataOutputQueue::CallbackId> depthCallbackIdMap, disparityCallbackIdMap;
 
-    // if (m_depthQueue.get()) {
-    //     spdlog::info("{} adds depth queue callback", m_params.device_id);
-    //     depthCallbackId = m_depthQueue->addCallback(
-    //         std::bind(&OakRos::depthCallback, this, std::placeholders::_1));
-    // }
+    for (auto& item : m_depthQueueMap) {
+        auto& name = item.first;
+        auto& queue = item.second;
+
+        spdlog::info("{} adds depth queue callback for {}", m_params.device_id, name);
+        depthCallbackIdMap[name] = queue->addCallback(
+            std::bind(&OakRos::depthCallback, this, std::placeholders::_1, name));
+    }
+
+    for (auto& item : m_disparityQueueMap) {
+        auto& name = item.first;
+        auto& queue = item.second;
+
+        spdlog::info("{} adds disparity queue callback for {}", m_params.device_id, name);
+        disparityCallbackIdMap[name] = queue->addCallback(
+            std::bind(&OakRos::disparityCallback, this, std::placeholders::_1, name));
+
+        m_rightFrameHistoryMap[name] = std::queue<std::shared_ptr<dai::ImgFrame>>();
+    }
 
     if (m_imuQueue.get()) {
         spdlog::info("{} adds imu queue callback", m_params.device_id);
@@ -520,8 +745,11 @@ void OakRos::run() {
         m_watchdog = std::thread(&OakRos::restart, this);
     }
 
-    // if (m_depthQueue.get())
-    //     m_depthQueue->removeCallback(depthCallbackId);
+    for (auto& item : m_depthQueueMap)
+        item.second->removeCallback(depthCallbackIdMap[item.first]);
+
+    for (auto& item : m_disparityQueueMap)
+        item.second->removeCallback(disparityCallbackIdMap[item.first]);
 
     if (m_imuQueue.get())
         m_imuQueue->removeCallback(imuCallbackId);
@@ -529,14 +757,184 @@ void OakRos::run() {
     spdlog::info("{} OakRos quitting", m_params.device_id);
 }
 
-// void OakRos::depthCallback(std::shared_ptr<dai::ADatatype> data) {
-//     std::shared_ptr<dai::ImgFrame> depthFrame = std::static_pointer_cast<dai::ImgFrame>(data);
+void OakRos::depthCallback(std::shared_ptr<dai::ADatatype> data, std::string name) {
+    std::shared_ptr<dai::ImgFrame> depthFrame = std::static_pointer_cast<dai::ImgFrame>(data);
 
-//     unsigned int seq = depthFrame->getSequenceNum();
-//     double ts = depthFrame->getTimestamp().time_since_epoch().count() / 1.0e9;
+    unsigned int seq = depthFrame->getSequenceNum();
+    double ts = depthFrame->getTimestamp().time_since_epoch().count() / 1.0e9;
 
-//     spdlog::debug("{} depth seq = {}, ts = {}", m_params.device_id, seq, ts);
-// }
+    spdlog::info("{} depth seq = {}, ts = {}", m_params.device_id, seq, ts);
+}
+
+void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string name) {
+    std::shared_ptr<dai::ImgFrame> disparityFrame = std::static_pointer_cast<dai::ImgFrame>(data);
+
+    auto& leftName = m_params.enabled_stereo_pairs[name].first;
+    auto& rightName = m_params.enabled_stereo_pairs[name].second;
+
+    unsigned int seq = disparityFrame->getSequenceNum();
+    
+
+    if (m_lastDispSeqMap.count(name) && seq > m_lastDispSeqMap[name] + 1) {
+        spdlog::warn("jump detected in disp frame, from {} to {}. should be {}", m_lastDispSeqMap[name], seq,
+                     m_lastDispSeqMap[name] + 1);
+    }
+    m_lastDispSeqMap[name] = seq;
+
+    double ts = disparityFrame->getTimestamp().time_since_epoch().count() / 1.0e9;
+
+    spdlog::info("{} disparity seq = {}, ts = {}", m_params.device_id, seq, ts);
+
+    if (m_params.enable_disparity) {
+
+        if (!m_disparityPubMap.count(name)) {
+            m_disparityPubMap.emplace(name, new auto(m_nh.advertise<stereo_msgs::DisparityImage>(
+                m_params.topic_name + "/" + name + "_disparity", 10)));
+            spdlog::info("{} received first disparity image message at pair {}!", m_params.device_id, name);
+
+            m_outDispImageMsgMap.emplace(name, new stereo_msgs::DisparityImage);
+
+            m_outDispImageMsgMap[name]->header.frame_id = m_params.tf_prefix + rightName + "_camera_optical_frame";
+
+            dai::CalibrationHandler calibData = m_device->readCalibration();
+            std::vector<std::vector<float>> intrinsics = calibData.getCameraIntrinsics(
+                m_socketMapping[rightName] , disparityFrame->getWidth(),
+                disparityFrame->getHeight());
+
+            float fx = intrinsics[0][0];
+            float fy = intrinsics[1][1];
+            float cu = intrinsics[0][2];
+            float cv = intrinsics[1][2];
+
+            float baseline = calibData.getBaselineDistance(m_socketMapping[rightName],
+                                                           m_socketMapping[leftName], false) /
+                             100.;
+
+            float _focalLength = 880;
+            float _baseline = 0.075;
+            float _maxDepth = 10;
+            float _minDepth = 0.1;
+            m_outDispImageMsgMap[name]->f = (fx + fy) / 2.;
+            // outDispImageMsg.min_disparity = _focalLength * _baseline / _maxDepth;
+            // outDispImageMsg.max_disparity = _focalLength * _baseline / _minDepth;
+
+            m_outDispImageMsgMap[name]->min_disparity = 2;
+            m_outDispImageMsgMap[name]->max_disparity = 95;
+        }
+
+        sensor_msgs::Image &outImageMsg = m_outDispImageMsgMap[name]->image;
+
+        outImageMsg.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
+        outImageMsg.header = m_outDispImageMsgMap[name]->header;
+
+        // const size_t size = disparityFrame->getData().size() * sizeof(float);
+        const size_t size =
+            disparityFrame->getHeight() * disparityFrame->getWidth() * sizeof(float);
+        outImageMsg.data.resize(size);
+        outImageMsg.height = disparityFrame->getHeight();
+        outImageMsg.width = disparityFrame->getWidth();
+        outImageMsg.step = size / disparityFrame->getHeight();
+        outImageMsg.is_bigendian = true;
+
+        // timestamp
+        m_outDispImageMsgMap[name]->header.stamp = ros::Time().fromSec(ts);
+
+        if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW8) {
+            // spdlog::info("raw 8 type");
+            m_outDispImageMsgMap[name]->delta_d = 1.0;
+
+            // spdlog::info("disparity frame width {}, height {}, size {}", outImageMsg.width,
+            // outImageMsg.height, disparityFrame->getData().size());
+
+            std::vector<float> convertedData(disparityFrame->getData().begin(),
+                                             disparityFrame->getData().end());
+
+            unsigned char *imageMsgDataPtr =
+                reinterpret_cast<unsigned char *>(outImageMsg.data.data());
+
+            unsigned char *daiImgData = reinterpret_cast<unsigned char *>(convertedData.data());
+
+            // TODO(Sachin): Try using assign since it is a vector
+            // img->data.assign(packet.data->cbegin(), packet.data->cend());
+            memcpy(imageMsgDataPtr, daiImgData, size);
+
+            m_disparityPubMap[name]->publish(m_outDispImageMsgMap[name]);
+
+        } else if (disparityFrame->getType() == dai::RawImgFrame::Type::RAW16) {
+
+            m_outDispImageMsgMap[name]->delta_d = 1.0 / 8;
+
+            unsigned char *daiImgData =
+                reinterpret_cast<unsigned char *>(disparityFrame->getData().data());
+
+            std::vector<uint16_t> raw16Data(disparityFrame->getHeight() *
+                                            disparityFrame->getWidth());
+            unsigned char *raw16DataPtr = reinterpret_cast<unsigned char *>(raw16Data.data());
+            memcpy(raw16DataPtr, daiImgData,
+                   disparityFrame->getHeight() * disparityFrame->getWidth() * sizeof(uint16_t));
+            std::vector<float> convertedData;
+            std::transform(
+                raw16Data.begin(), raw16Data.end(), std::back_inserter(convertedData),
+                [](uint16_t disp) -> std::size_t { return static_cast<float>(disp) / 8.0; });
+
+            unsigned char *imageMsgDataPtr =
+                reinterpret_cast<unsigned char *>(outImageMsg.data.data());
+            unsigned char *convertedDataPtr =
+                reinterpret_cast<unsigned char *>(convertedData.data());
+            memcpy(imageMsgDataPtr, convertedDataPtr, size);
+
+            m_disparityPubMap[name]->publish(m_outDispImageMsgMap[name]);
+        } else {
+            spdlog::info("type : {}", disparityFrame->getType());
+            throw std::runtime_error("not implemented");
+        }
+    }
+
+
+    if (m_params.enable_pointcloud) {
+        // tries to find matching
+        std::shared_ptr<dai::ImgFrame> right;
+
+        auto& depthMonoQueue = m_depthMonoQueueMap[name];
+
+        while (true) {
+            auto frame = depthMonoQueue->get<dai::ImgFrame>();
+
+            m_rightFrameHistoryMap[name].push(frame);
+
+            if (frame->getSequenceNum() >= seq)
+                break;
+        }
+
+        while (m_rightFrameHistoryMap[name].size()) {
+            std::shared_ptr<dai::ImgFrame> frame = m_rightFrameHistoryMap[name].front();
+            
+            unsigned int rightSeq = frame->getSequenceNum();
+            if (rightSeq < seq) {
+                m_rightFrameHistoryMap[name].pop();
+                continue;
+            }
+            else if (rightSeq > seq) {
+                spdlog::warn("fail to match the disparity frame seq {}, with next in line right frame seq {}", seq, rightSeq);
+                break;
+            }else {
+                m_rightFrameHistoryMap[name].pop();
+                right = frame;
+                break; // found
+            }
+
+        }
+
+        if (!right.get()){
+            spdlog::warn("failed to find depthmono frame with seq {}, skip", seq);
+            return;
+        }
+
+        double tsRight = right->getTimestamp().time_since_epoch().count() / 1.0e9;
+
+        assert (ts == tsRight);
+    }
+}
 
 void OakRos::imuCallback(std::shared_ptr<dai::ADatatype> data) {
     std::shared_ptr<dai::IMUData> imuData = std::static_pointer_cast<dai::IMUData>(data);

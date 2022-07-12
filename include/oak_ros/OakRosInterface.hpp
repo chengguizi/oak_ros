@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include <ros/ros.h>
 
@@ -16,7 +17,7 @@
  *
  *
  * @param enable_depth boolean to enable depth stream (TODO: not yet implemented)
- * @param enable_depth_pointcloud TODO: not yet implemented
+ * @param enable_disparity boolean to enable disparity stream
  *
  * @param enable_rgb boolean to enable rgb stream (TODO: not yet implemented)
  * @param rgb_resolution optional parameter to specify the preferred rgb resolution
@@ -29,7 +30,6 @@
  * @param manual_iso optional parameter to set manual iso, has to be used together with
  * @manual_exposure
  *
- * @param enable_apriltag boolean to enable apriltag detection streaming
  *
  * @note
  */
@@ -37,16 +37,13 @@
 struct OakRosParams {
     std::string device_id;
     std::string topic_name = "oak";
+    std::string tf_prefix;
 
     bool only_usb2_mode = false;
 
     std::optional<float> all_cameras_fps = {};
 
-    bool enable_depth_left_right = false;
-    bool enable_depth_rgb_camd = false;
-    bool enable_depth_pointcloud = false;
-    // dai::StereoDepthProperties
-
+    // configuration of individual cameras
     bool enable_rgb = false;
     bool enable_left = false;
     bool enable_right = false;
@@ -56,9 +53,22 @@ struct OakRosParams {
     std::map<std::string, dai::MonoCameraProperties::SensorResolution>
         resolutionMap; // dai::ColorCameraProperties::SensorResolution::THE_1080_P;
 
+    bool use_mesh = false;
+
+    // configuration for stereo
+
+    bool enable_stereo_rectified = false;
+    bool enable_depth = false;
+    bool enable_disparity = false;
+    bool enable_pointcloud = false;
+    int depth_decimation_factor = 1;
+
+    // define pairs of stereo: rgb, left, right, camd
+    std::map<std::string, std::pair<std::string, std::string>> enabled_stereo_pairs = {{"left_rgb", {"left", "rgb"}}};
+
     bool enable_imu = false;
     int imu_frequency = 100;
-    bool imu_use_raw = false;
+    bool imu_use_raw = false; // whether to use raw or filtered readings from IMU sensor
 
     std::optional<int> manual_exposure; // 1 - 33000
     std::optional<int> manual_iso;      // 100 - 1600
