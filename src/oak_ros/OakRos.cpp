@@ -313,6 +313,8 @@ void OakRos::configureStereo() {
 
                 spdlog::warn("Use Generated mesh data for un-distortion and rectification");
                 stereoDepth->loadMeshData(dataLeft, dataRight);
+
+                m_newM = meshGen.getNewM();
             }
 
             // Linking
@@ -655,6 +657,36 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
 
     // spdlog::info("{} disparity seq = {}, ts = {}", m_params.device_id, seq, ts);
 
+    const float baseline = m_calibData.getBaselineDistance(dai::CameraBoardSocket::RIGHT,
+                                                           dai::CameraBoardSocket::LEFT, false) /
+                             100.;
+
+    float fx, fy, cu, cv;
+
+
+    // TODO: debug this
+    if (!m_params.use_mesh) {
+
+        dai::CameraInfo infoRight = m_calibData.getEepromData().cameraData.at(dai::CameraBoardSocket::RIGHT);
+
+        // here we assume the on-device rectification uses the right camera's intrinsic
+        std::vector<std::vector<float>> intrinsics = m_calibData.getCameraIntrinsics(
+                dai::CameraBoardSocket::RIGHT, infoRight.width,
+                infoRight.height);
+
+        fx = intrinsics[0][0];
+        fy = intrinsics[1][1];
+        cu = intrinsics[0][2];
+        cv = intrinsics[1][2];
+    }else {
+        cv::Mat_<float> intrinsics =  m_newM;
+
+        fx = intrinsics(0, 0);
+        fy = intrinsics(1, 1);
+        cu = intrinsics(0, 2);
+        cv = intrinsics(1, 2);
+    }
+
     if (m_params.enable_disparity) {
 
         if (!m_disparityPub.get()) {
@@ -665,20 +697,6 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
             m_outDispImageMsg.reset(new stereo_msgs::DisparityImage);
 
             m_outDispImageMsg->header.frame_id = m_params.tf_prefix + "right_camera_optical_frame";
-
-            dai::CalibrationHandler calibData = m_device->readCalibration();
-            std::vector<std::vector<float>> intrinsics = calibData.getCameraIntrinsics(
-                dai::CameraBoardSocket::RIGHT, disparityFrame->getWidth(),
-                disparityFrame->getHeight());
-
-            float fx = intrinsics[0][0];
-            float fy = intrinsics[1][1];
-            float cu = intrinsics[0][2];
-            float cv = intrinsics[1][2];
-
-            float baseline = calibData.getBaselineDistance(dai::CameraBoardSocket::RIGHT,
-                                                           dai::CameraBoardSocket::LEFT, false) /
-                             100.;
 
             float _focalLength = 880;
             float _baseline = 0.075;
@@ -776,20 +794,6 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data) {
         if (!m_disparity2PointCloudConverter.get()) {
 
             // obtain intrinsics of the right camera
-
-            dai::CalibrationHandler calibData = m_device->readCalibration();
-            std::vector<std::vector<float>> intrinsics = calibData.getCameraIntrinsics(
-                dai::CameraBoardSocket::RIGHT, disparityFrame->getWidth(),
-                disparityFrame->getHeight());
-
-            float fx = intrinsics[0][0];
-            float fy = intrinsics[1][1];
-            float cu = intrinsics[0][2];
-            float cv = intrinsics[1][2];
-
-            float baseline = calibData.getBaselineDistance(dai::CameraBoardSocket::RIGHT,
-                                                           dai::CameraBoardSocket::LEFT, false) /
-                             100.;
 
             m_disparity2PointCloudConverter.reset(new OakPointCloudConverter(
                 fx, fy, cu, cv, baseline, m_params.depth_decimation_factor));

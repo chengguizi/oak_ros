@@ -21,7 +21,7 @@
         <param name="pointcloud" value="true"/>
         <param name="depth_decimation_factor" value="2"/>
         <param name="only_usb2_mode" value="false"/>
-        <param name="use_mesh" value="false"/> <!-- use internal intrinsics in EEPROM to generate sparse mesh, instead of built-in homography rectification -->
+        <param name="use_mesh" value="true"/> <!-- use internal intrinsics in EEPROM to generate sparse mesh, instead of built-in homography rectification -->
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
         <param name="shutter_speed_us" value="$(arg shutter_speed_us)"/>
         <param name="iso" value="$(arg iso)"/>

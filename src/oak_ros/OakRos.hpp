@@ -131,7 +131,7 @@ class OakRos : public OakRosInterface {
     // store a short history of the right camera frames (rectified, decimated) for rdbd pointcloud output
     std::queue<std::shared_ptr<dai::ImgFrame>> m_rightFrameHistory;
 
-
+    cv::Mat_<float> m_newM;
     sensor_msgs::PointCloud2::Ptr m_cloudMsgFromDisp, m_cloudMsgFromDepth;
     stereo_msgs::DisparityImage::Ptr m_outDispImageMsg;
     std::shared_ptr<OakPointCloudConverter> m_disparity2PointCloudConverter, m_depth2PointCloudConverter;
