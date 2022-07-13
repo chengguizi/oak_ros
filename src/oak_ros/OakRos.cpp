@@ -472,7 +472,7 @@ void OakRos::configureStereos() {
                     std::string name = item.first;
                     auto& stereoDepth = item.second;
 
-                    constexpr int meshStep = 16;
+                    constexpr int meshStep = 10;
                     stereoDepth->useHomographyRectification(false);
                     stereoDepth->setMeshStep(meshStep, meshStep);
 
@@ -815,13 +815,15 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
     float fx, fy, cu, cv;
 
 
-    // TODO: debug this
+    // TODO: debug this, and put this outside the callback
     if (!m_params.use_mesh) {
+
+        auto imageSize = getImageSize(m_cameraMap[rightName]->getResolution());
 
         // here we assume the on-device rectification uses the right camera's intrinsic
         std::vector<std::vector<float>> intrinsics = m_calibData.getCameraIntrinsics(
-                m_socketMapping[rightName], disparityFrame->getWidth(),
-                disparityFrame->getHeight());
+                m_socketMapping[rightName], imageSize.width,
+                imageSize.height);
 
         fx = intrinsics[0][0];
         fy = intrinsics[1][1];

@@ -127,7 +127,7 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
                     continue;
                 }
 
-                float depth = m_fx * m_baseline / (disparity - 1);
+                float depth = m_fx * m_baseline / disparity;
 
                 if (depth >= m_maximum_depth) {
                     *iter_x = *iter_y = *iter_z = *iter_i = bad_point;
@@ -138,8 +138,8 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
 
                 // convert RDF to NWU
                 *iter_x = depth;
-                *iter_y = - (u * m_depth_decimation_factor - m_cu) * m_baseline / (disparity - 1);
-                *iter_z = - (v * m_depth_decimation_factor - m_cv) * m_baseline / (disparity - 1);
+                *iter_y = - (u * m_depth_decimation_factor - m_cu) * m_baseline / disparity;
+                *iter_z = - (v * m_depth_decimation_factor - m_cv) * m_baseline / disparity;
                 *iter_i = intensity;
             }
         }

@@ -28,6 +28,24 @@ template <typename _Tp> static std::vector<std::vector<_Tp>> toVec(const cv::Mat
     return vecOut;
 }
 
+cv::Size_<int> getImageSize(dai::MonoCameraProperties::SensorResolution resolution) {
+
+    cv::Size_<int> imageSize;
+    if (resolution == dai::MonoCameraProperties::SensorResolution::THE_400_P) {
+            imageSize = cv::Size_<int>(640, 400);
+        }else if (resolution == dai::MonoCameraProperties::SensorResolution::THE_480_P) {
+            imageSize = cv::Size_<int>(640, 480);
+        }else if (resolution == dai::MonoCameraProperties::SensorResolution::THE_720_P) {
+            imageSize = cv::Size_<int>(1280, 720);
+        }else if (resolution == dai::MonoCameraProperties::SensorResolution::THE_800_P) {
+            imageSize = cv::Size_<int>(1280, 800);
+        }else {
+            throw std::runtime_error("sensor resolution not implemented");
+        }
+    
+    return imageSize;
+}
+
 template <typename _T, typename _Tp>
 void getRt(std::vector<std::vector<_T>> &T, cv::Mat_<_Tp> &R, cv::Mat_<_Tp> &t) {
     R = cv::Mat_<_Tp>(3, 3);
@@ -85,17 +103,7 @@ void OakMeshDataGenerator::getRectificationTransformFromOpenCV(dai::CalibrationH
         // // dai::CameraInfo infoRight = calibData.getEepromData().cameraData.at(socketRight);
         // m_imageSize = cv::Size_<int>(infoLeft.width, infoLeft.height);
 
-        if (resolution == dai::MonoCameraProperties::SensorResolution::THE_400_P) {
-            m_imageSize = cv::Size_<int>(640, 400);
-        }else if (resolution == dai::MonoCameraProperties::SensorResolution::THE_480_P) {
-            m_imageSize = cv::Size_<int>(640, 480);
-        }else if (resolution == dai::MonoCameraProperties::SensorResolution::THE_720_P) {
-            m_imageSize = cv::Size_<int>(1280, 720);
-        }else if (resolution == dai::MonoCameraProperties::SensorResolution::THE_800_P) {
-            m_imageSize = cv::Size_<int>(1280, 800);
-        }else {
-            throw std::runtime_error("sensor resolution not implemented");
-        }
+        m_imageSize = getImageSize(resolution);
 
         std::cout << "Mesh Generator uses image size " << m_imageSize << std::endl;
     }
