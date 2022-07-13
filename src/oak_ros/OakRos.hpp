@@ -167,6 +167,8 @@ class OakRos : public OakRosInterface {
     std::map<std::string, std::shared_ptr<ros::Publisher>> m_disparityPubMap, m_cloudPubFromDispMap;
     std::map<std::string, sensor_msgs::PointCloud2::Ptr> m_cloudMsgFromDispMap;
     std::map<std::string, stereo_msgs::DisparityImage::Ptr> m_outDispImageMsgMap;
+
+    std::map<std::string, cv::Mat_<float>> m_newMMap;
     std::map<std::string, std::shared_ptr<OakPointCloudConverter>> m_disparity2PointCloudConverterMap;
 
     // store a short history of the right frames (one of the stereo pair cameras) for monod / rgbd pointcloud output

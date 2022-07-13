@@ -483,8 +483,14 @@ void OakRos::configureStereos() {
                     
                     meshGen.calculateMeshData(meshStep, dataLeft, dataRight);
 
+                    m_newMMap[name] = meshGen.getNewM();
+
                     spdlog::warn("Use Generated mesh data for un-distortion and rectification on {}-{} pair", leftName, rightName);
                     stereoDepth->loadMeshData(dataLeft, dataRight);
+                }
+            }else {
+                for (auto& item : m_stereoDepthMap) {
+                    stereoDepth->useHomographyRectification(false);
                 }
             }
 
@@ -511,20 +517,29 @@ void OakRos::configureStereos() {
 
             if (m_params.enable_pointcloud) {
 
-                auto imageManip = m_imageManipMap[nameStereo] = m_pipeline.create<dai::node::ImageManip>();
-
                 spdlog::info("{} enabling pointcloud stream for {}...", m_params.device_id, nameStereo);
-
-                const int width = monoRight->getResolutionWidth();
-                const int height = monoRight->getResolutionHeight();
-
-                imageManip->initialConfig.setResize(width / m_params.depth_decimation_factor, height / m_params.depth_decimation_factor);
 
                 auto xoutDepthMono = m_pipeline.create<dai::node::XLinkOut>();
                 xoutDepthMono->setStreamName("depthmono_" + nameStereo);
+
+                if ( m_params.depth_decimation_factor > 1) {
+                    auto imageManip = m_imageManipMap[nameStereo] = m_pipeline.create<dai::node::ImageManip>();
+
+                    const int width = monoRight->getResolutionWidth();
+                    const int height = monoRight->getResolutionHeight();
+
+                    imageManip->initialConfig.setResize(width / m_params.depth_decimation_factor, height / m_params.depth_decimation_factor);
+                    // imageManip->initialConfig.setFrameType(dai::ImgFrame::Type::RAW8);
+
+                    // hm: workaround?
+                    // imageManip->setMaxOutputFrameSize(3072000);
+                    
+                    stereoDepth->rectifiedRight.link(imageManip->inputImage);
+                    imageManip->out.link(xoutDepthMono->input);
+                }else {
+                    stereoDepth->rectifiedRight.link(xoutDepthMono->input);
+                }
                 
-                stereoDepth->rectifiedRight.link(imageManip->inputImage);
-                imageManip->out.link(xoutDepthMono->input);
             }
 
             if (!m_params.enable_stereo_rectified) {
@@ -783,20 +798,33 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
 
     double ts = disparityFrame->getTimestamp().time_since_epoch().count() / 1.0e9;
 
-    spdlog::info("{} disparity seq = {}, ts = {}", m_params.device_id, seq, ts);
+    // spdlog::info("{} disparity seq = {}, ts = {}", m_params.device_id, seq, ts);
 
     const float baseline = m_calibData.getBaselineDistance(m_socketMapping[rightName],
                                                            m_socketMapping[leftName], false) /
                              100.;
 
-    std::vector<std::vector<float>> intrinsics = m_calibData.getCameraIntrinsics(
+    float fx, fy, cu, cv;
+
+    if (!m_params.use_mesh) {
+
+        // here we assume the on-device rectification uses the right camera's intrinsic
+        std::vector<std::vector<float>> intrinsics = m_calibData.getCameraIntrinsics(
                 m_socketMapping[rightName], disparityFrame->getWidth(),
                 disparityFrame->getHeight());
 
-    float fx = intrinsics[0][0];
-    float fy = intrinsics[1][1];
-    float cu = intrinsics[0][2];
-    float cv = intrinsics[1][2];
+        fx = intrinsics[0][0];
+        fy = intrinsics[1][1];
+        cu = intrinsics[0][2];
+        cv = intrinsics[1][2];
+    }else {
+        cv::Mat_<float> intrinsics =  m_newMMap[name];
+
+        fx = intrinsics(0, 0);
+        fy = intrinsics(1, 1);
+        cu = intrinsics(0, 2);
+        cv = intrinsics(1, 2);
+    }
 
     if (m_params.enable_disparity) {
 

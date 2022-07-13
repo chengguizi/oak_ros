@@ -56,12 +56,17 @@ class OakMeshDataGenerator {
                                              dai::CameraBoardSocket socketLeft,
                                              dai::CameraBoardSocket socketRight, dai::MonoCameraProperties::SensorResolution resolution);
 
+    cv::Mat_<float> getNewM(){return m_newM;}
+
+    // cv::Mat_<float> getNewM(int decimation);
+    
     void calculateMeshData(const int meshStep, std::vector<std::uint8_t> &dataLeft,
                            std::vector<std::uint8_t> &dataRight);
 
   private:
     cv::Mat_<float> m_M1, m_M2;
     cv::Mat m_R1, m_R2, m_P1, m_P2;
+    cv::Mat_<float> m_newM; // essentially is m_P2's K matrix
     cv::Mat_<float> m_D1, m_D2;
     cv::Size m_imageSize;
 };
@@ -145,7 +150,7 @@ void OakMeshDataGenerator::getRectificationTransformFromOpenCV(dai::CalibrationH
                       << std::endl;
 
             cv::stereoRectify(m_M1, m_D1, m_M2, m_D2, m_imageSize, R, t, m_R1, m_R2, m_P1, m_P2,
-                              cv::noArray());
+                              cv::noArray(), cv::CALIB_ZERO_DISPARITY, 0.9);
             
 
         } else if (cameraModelLeft == dai::CameraModel::Fisheye &&
@@ -166,7 +171,7 @@ void OakMeshDataGenerator::getRectificationTransformFromOpenCV(dai::CalibrationH
                       << std::endl;
 
             cv::fisheye::stereoRectify(m_M1, m_D1, m_M2, m_D2, m_imageSize, R, t, m_R1, m_R2, m_P1,
-                                       m_P2, cv::noArray(), 0);
+                                       m_P2, cv::noArray(), cv::CALIB_ZERO_DISPARITY, cv::Size(), 0.2);
             
 
         } else {
@@ -176,9 +181,24 @@ void OakMeshDataGenerator::getRectificationTransformFromOpenCV(dai::CalibrationH
 
     std::cout << "R1" << std::endl << m_R1 << std::endl;
     std::cout << "R2" << std::endl << m_R2 << std::endl;
+    std::cout << "P1" << std::endl << m_P1 << std::endl;
+    std::cout << "P2" << std::endl << m_P2 << std::endl;
 
-    
+    m_newM = cv::Mat(m_P2, cv::Range(0, 3), cv::Range(0, 3));
+
 }
+
+// cv::Mat_<float> OakMeshDataGenerator::getNewM(int decimation) {
+
+//     cv::Mat_<float> decimatedM = m_newM;
+
+//     m_newM(0, 0) /= decimation;
+//     m_newM(1, 1) /= decimation;
+//     m_newM(0, 2) /= decimation;
+//     m_newM(1, 2) /= decimation;
+    
+//     return decimatedM;
+// }
 
 void OakMeshDataGenerator::calculateMeshData(const int meshStep,
                                              std::vector<std::uint8_t> &dataLeft,
@@ -191,13 +211,13 @@ void OakMeshDataGenerator::calculateMeshData(const int meshStep,
 
     if (m_D1.total() == 8 && m_D2.total() == 8) {
         // perspective camera
-        cv::initUndistortRectifyMap(m_M1, m_D1, m_R1, m_M2, m_imageSize, CV_32FC1, mapXL, mapYL);
-        cv::initUndistortRectifyMap(m_M2, m_D2, m_R2, m_M2, m_imageSize, CV_32FC1, mapXR, mapYR);
+        cv::initUndistortRectifyMap(m_M1, m_D1, m_R1, m_newM, m_imageSize, CV_32FC1, mapXL, mapYL);
+        cv::initUndistortRectifyMap(m_M2, m_D2, m_R2, m_newM, m_imageSize, CV_32FC1, mapXR, mapYR);
     } else if (m_D1.total() == 4 && m_D2.total() == 4) {
         // fisheye camera
-        cv::fisheye::initUndistortRectifyMap(m_M1, m_D1, m_R1, m_M2, m_imageSize, CV_32FC1, mapXL,
+        cv::fisheye::initUndistortRectifyMap(m_M1, m_D1, m_R1, m_newM, m_imageSize, CV_32FC1, mapXL,
                                              mapYL);
-        cv::fisheye::initUndistortRectifyMap(m_M2, m_D2, m_R2, m_M2, m_imageSize, CV_32FC1, mapXR,
+        cv::fisheye::initUndistortRectifyMap(m_M2, m_D2, m_R2, m_newM, m_imageSize, CV_32FC1, mapXR,
                                              mapYR);
     } else {
         throw std::runtime_error("Not Implemented distortion model");
