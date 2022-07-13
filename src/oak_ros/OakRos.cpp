@@ -479,7 +479,7 @@ void OakRos::configureStereos() {
                     meshGen.getRectificationTransformFromOpenCV(m_calibData, 
                         m_socketMapping[leftName], 
                         m_socketMapping[rightName], 
-                        m_params.resolutionMap[leftName]);
+                        m_params.resolutionMap[leftName], m_params.mesh_alpha);
                     
                     meshGen.calculateMeshData(meshStep, dataLeft, dataRight);
 

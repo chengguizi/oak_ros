@@ -54,7 +54,7 @@ class OakMeshDataGenerator {
     // initialise R1, R2, P1, P2, Q
     void getRectificationTransformFromOpenCV(dai::CalibrationHandler calibData,
                                              dai::CameraBoardSocket socketLeft,
-                                             dai::CameraBoardSocket socketRight, dai::MonoCameraProperties::SensorResolution resolution);
+                                             dai::CameraBoardSocket socketRight, dai::MonoCameraProperties::SensorResolution resolution, float alpha);
 
     cv::Mat_<float> getNewM(){return m_newM;}
 
@@ -73,9 +73,11 @@ class OakMeshDataGenerator {
 
 void OakMeshDataGenerator::getRectificationTransformFromOpenCV(dai::CalibrationHandler calibData,
                                                                dai::CameraBoardSocket socketLeft,
-                                                               dai::CameraBoardSocket socketRight, dai::MonoCameraProperties::SensorResolution resolution) {
+                                                               dai::CameraBoardSocket socketRight, dai::MonoCameraProperties::SensorResolution resolution, float alpha) {
 
     std::cout << "getRectificationTransformFromOpenCV" << std::endl;
+
+    assert (alpha >= 0 && alpha <= 1);
 
     // Obtain Size
     {
@@ -150,7 +152,7 @@ void OakMeshDataGenerator::getRectificationTransformFromOpenCV(dai::CalibrationH
                       << std::endl;
 
             cv::stereoRectify(m_M1, m_D1, m_M2, m_D2, m_imageSize, R, t, m_R1, m_R2, m_P1, m_P2,
-                              cv::noArray(), cv::CALIB_ZERO_DISPARITY, 0.9);
+                              cv::noArray(), cv::CALIB_ZERO_DISPARITY, alpha);
             
 
         } else if (cameraModelLeft == dai::CameraModel::Fisheye &&
@@ -171,7 +173,7 @@ void OakMeshDataGenerator::getRectificationTransformFromOpenCV(dai::CalibrationH
                       << std::endl;
 
             cv::fisheye::stereoRectify(m_M1, m_D1, m_M2, m_D2, m_imageSize, R, t, m_R1, m_R2, m_P1,
-                                       m_P2, cv::noArray(), cv::CALIB_ZERO_DISPARITY, cv::Size(), 0.2);
+                                       m_P2, cv::noArray(), cv::CALIB_ZERO_DISPARITY, cv::Size(), alpha);
             
 
         } else {
@@ -184,8 +186,8 @@ void OakMeshDataGenerator::getRectificationTransformFromOpenCV(dai::CalibrationH
     std::cout << "P1" << std::endl << m_P1 << std::endl;
     std::cout << "P2" << std::endl << m_P2 << std::endl;
 
-    m_newM = cv::Mat(m_P2, cv::Range(0, 3), cv::Range(0, 3));
-
+    m_newM = cv::Mat_<float>(m_P2, cv::Range(0, 3), cv::Range(0, 3));
+    // m_newM = m_M2;
 }
 
 // cv::Mat_<float> OakMeshDataGenerator::getNewM(int decimation) {

@@ -58,6 +58,7 @@ int main(int argc, char **argv) {
     int option_resolution;
     std::string option_exposure_mode;
     bool option_use_mesh;
+    float option_mesh_alpha;
     // bool option_rectified;
     bool option_poe_mode;
     bool option_only_usb2_mode;
@@ -85,6 +86,7 @@ int main(int argc, char **argv) {
     nh_local.param<int>("frequency", option_frequency, -1);
     nh_local.param<int>("resolution", option_resolution, 480);
     nh_local.param<bool>("use_mesh", option_use_mesh, false);
+    nh_local.param<float>("mesh_alpha", option_mesh_alpha, 0.0);
     // nh_local.param<bool>("rectified", option_rectified, true);
     nh_local.param<std::string>("exposure_mode", option_exposure_mode, "auto");
     nh_local.param<int>("shutter_speed_us", option_shutter_speed_us, 1000);
@@ -176,6 +178,7 @@ int main(int argc, char **argv) {
         params.depth_decimation_factor = option_depth_decimation_factor;
 
         params.use_mesh = option_use_mesh;
+        params.mesh_alpha = option_mesh_alpha;
 
         params.device_id = id;
         params.topic_name = "oak" + std::to_string(topic_name_seq);

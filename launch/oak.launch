@@ -18,6 +18,7 @@
         <param name="poe_mode" value="false"/>
         <param name="only_usb2_mode" value="true"/>
         <param name="use_mesh" value="true"/> 
+        <param name="mesh_alpha" value="0.0"/> 
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
         <param name="shutter_speed_us" value="$(arg shutter_speed_us)"/>
         <param name="iso" value="$(arg iso)"/>
@@ -36,7 +37,7 @@
         <param name="enable_disparity" value="true"/>
         <param name="enable_depth" value="false"/>
         <param name="enable_pointcloud" value="true"/>
-        <param name="depth_decimation_factor" value="2"/>
+        <param name="depth_decimation_factor" value="1"/>
         <param name="hardware_sync" value="true"/> 
         <param name="debug_opencv_image" value="$(arg debug_opencv_image)"/> 
     </node>

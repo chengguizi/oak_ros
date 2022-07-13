@@ -54,6 +54,7 @@ struct OakRosParams {
         resolutionMap; // dai::ColorCameraProperties::SensorResolution::THE_1080_P;
 
     bool use_mesh = false;
+    float mesh_alpha = 0; // range [0, 1], 0 means no black boarder, 1 means no pixel losses
 
     // configuration for stereo
 
