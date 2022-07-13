@@ -1,5 +1,5 @@
 <launch>
-    <arg name="resolution" default="400"/>
+    <arg name="resolution" default="800"/>
     <arg name="exposure_mode" default="manual"/>
     <arg name="shutter_speed_us" default="1400"/>
     <arg name="iso" default="200"/>
@@ -10,7 +10,7 @@
 
     <node pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
         <param name="resolution" value="$(arg resolution)"/>
-        <param name="frequency" value="30"/>
+        <param name="frequency" value="10"/>
         <param name="rates_workaround" value="false"/>
         <param name="poe_mode" value="false"/>
         <param name="only_usb2_mode" value="true"/>

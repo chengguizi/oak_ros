@@ -29,6 +29,7 @@ class ImuInterpolation {
 
   private:
     int m_imuFrequency;
+    double m_lastGyroTs = -1;
     std::deque<dai::IMUReportAccelerometer> m_accelHist;
     std::deque<dai::IMUReportGyroscope> m_gyroHist;
 

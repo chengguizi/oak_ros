@@ -8,7 +8,7 @@
     <arg name="exposure_compensation" default="-1"/>
     <arg name="ir_laser_dot" default="0"/>
     <arg name="ir_floodlight" default="0"/>
-    <arg name="debug_opencv_image" default="false"/>
+    <arg name="debug_opencv_image" default="true"/>
 
     <node ns="$(arg vehicle)" pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
         <param name="tf_prefix" type = "string" value="$(arg vehicle)/"/>
@@ -33,7 +33,7 @@
         <param name="camd" value="false"/>
         <param name="imu_frequency" value="200"/>
         <param name="imu_use_raw" value="false"/> 
-        <param name="enable_stereo_rectified" value="true"/>
+        <param name="enable_stereo_rectified" value="false"/>
         <param name="enable_disparity" value="true"/>
         <param name="enable_depth" value="false"/>
         <param name="enable_pointcloud" value="true"/>

@@ -65,6 +65,14 @@ ImuInterpolation::updatePacket(const dai::IMUReportAccelerometer &accel,
                 continue;
             }
 
+            if (m_lastGyroTs >= gyroTs) {
+
+                spdlog::warn("skip imu reading due to timestamp, prev = {}, now = {}", m_lastGyroTs, gyroTs);
+                m_gyroHist.pop_front();
+                continue;
+            }else
+                m_lastGyroTs = gyroTs;
+
             spdlog::debug(
                 "imu interploation: from accel0 {} ({}) and accel1 {} ({}) to gyro {} ({})",
                 accel0.sequence, accel0Ts, accel1.sequence, accel1Ts, currGyro.sequence, gyroTs);
@@ -444,8 +452,8 @@ void OakRos::configureStereos() {
             // PostConfig.postProcessing.spatialFilter.alpha = 0.5;
             // PostConfig.postProcessing.spatialFilter.delta = 20;
 
-            PostConfig.postProcessing.thresholdFilter.minRange = 100;
-            PostConfig.postProcessing.thresholdFilter.maxRange = 15000;
+            PostConfig.postProcessing.thresholdFilter.minRange = 200;
+            PostConfig.postProcessing.thresholdFilter.maxRange = 8000;
 
             // Following realsense D435i
             PostConfig.postProcessing.decimationFilter.decimationFactor =
@@ -806,6 +814,8 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
 
     float fx, fy, cu, cv;
 
+
+    // TODO: debug this
     if (!m_params.use_mesh) {
 
         // here we assume the on-device rectification uses the right camera's intrinsic

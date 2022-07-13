@@ -95,8 +95,6 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
         if (imageFrame->getType() != dai::RawImgFrame::Type::RAW8)
             throw std::runtime_error("expect mono8 type");
         
-        float constant_x = m_fx;
-        float constant_y = m_fy;
         float bad_point = std::numeric_limits<float>::quiet_NaN();
 
         // https://github.com/ros-perception/image_pipeline/blob/noetic/depth_image_proc/src/nodelets/point_cloud_xyzi.cpp
@@ -110,18 +108,26 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
         const uint8_t *image_row = reinterpret_cast<const uint8_t *>(&imageFrame->getData()[0]);
 
         int row_step = disparityFrame->getWidth();
+        float min_disp = 100;
+        float max_disp = 0;
         for (int v = 0; v < (int)cloudMsg->height; ++v, disparity_row += row_step, image_row += imageFrame->getWidth()) {
             for (int u = 0; u < (int)cloudMsg->width; ++u, ++iter_x, ++iter_y, ++iter_z, ++iter_i) {
                 float disparity = (float)disparity_row[u] / m_scale;
                 float intensity = image_row[u];
 
+                if (disparity != 0 && min_disp > disparity)
+                    min_disp = disparity;
+                
+                if (max_disp < disparity)
+                    max_disp = disparity;
+
                 // Missing points denoted by zero
-                if (disparity == 0) {
+                if (disparity <= 0) {
                     *iter_x = *iter_y = *iter_z = *iter_i = bad_point;
                     continue;
                 }
 
-                float depth = constant_x * m_baseline / disparity;
+                float depth = m_fx * m_baseline / (disparity - 1);
 
                 if (depth >= m_maximum_depth) {
                     *iter_x = *iter_y = *iter_z = *iter_i = bad_point;
@@ -132,11 +138,13 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
 
                 // convert RDF to NWU
                 *iter_x = depth;
-                *iter_y = - (u * m_depth_decimation_factor - m_cu) * depth / constant_x;
-                *iter_z = - (v * m_depth_decimation_factor - m_cv) * depth / constant_y;
+                *iter_y = - (u * m_depth_decimation_factor - m_cu) * m_baseline / (disparity - 1);
+                *iter_z = - (v * m_depth_decimation_factor - m_cv) * m_baseline / (disparity - 1);
                 *iter_i = intensity;
             }
         }
+
+        // std::cout << "min_disp = " << min_disp << ", max_disp = " << max_disp << std::endl;
     }
 }
 
