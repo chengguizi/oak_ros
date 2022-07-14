@@ -13,9 +13,14 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/Imu.h>
 
+// #include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/static_transform_broadcaster.h>
+
 #include "sensor_msgs/PointCloud2.h"
 #include "sensor_msgs/image_encodings.h"
 #include "stereo_msgs/DisparityImage.h"
+
+#include <Eigen/Eigen>
 
 class OakPointCloudConverter;
 
@@ -152,6 +157,8 @@ class OakRos : public OakRosInterface {
     void disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string name);
     void imuCallback(std::shared_ptr<dai::ADatatype> data);
 
+    void publishStaticTransform(Eigen::Isometry3f T, std::string parentId, std::string childId);
+
     std::set<dai::CameraBoardSocket> m_noCalib;
     sensor_msgs::CameraInfo getCameraInfo(
         std::shared_ptr<dai::ImgFrame> img,
@@ -174,4 +181,7 @@ class OakRos : public OakRosInterface {
 
     // store a short history of the right frames (one of the stereo pair cameras) for monod / rgbd pointcloud output
     std::map<std::string, std::queue<std::shared_ptr<dai::ImgFrame>>> m_rightFrameHistoryMap;
+
+    // tf2_ros::TransformBroadcaster m_broadcaster;
+    tf2_ros::StaticTransformBroadcaster m_broadcaster;
 };

@@ -52,6 +52,7 @@ struct OakRosParams {
 
     std::map<std::string, dai::MonoCameraProperties::SensorResolution>
         resolutionMap; // dai::ColorCameraProperties::SensorResolution::THE_1080_P;
+    bool enable_stereo_half_resolution_output = true; // only effective when at 800P
 
     bool use_mesh = false;
     float mesh_alpha = 0; // range [0, 1], 0 means no black boarder, 1 means no pixel losses

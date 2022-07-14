@@ -152,6 +152,15 @@ with dai.Device() as device:
     calibData.setFov(leftId, 105)
     calibData.setFov(rightId, 105)
 
+    # STEP 3A - imu extrinsic
+
+    T_right_imu = T_imu_right.inverse()
+    imuR, imut = getRt(T_right_imu.matrix())
+
+    spec4CamParallel = [-2,0,-3.5]
+
+    calibData.setImuExtrinsics(rightId, imuR, imut * 100, spec4CamParallel)
+
     # STEP 4 - rectification
 
     # The step 4 is not necessary, as we shall calculate online

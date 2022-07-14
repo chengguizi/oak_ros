@@ -56,6 +56,7 @@ int main(int argc, char **argv) {
     std::string option_tf_prefix;
     int option_frequency;
     int option_resolution;
+    bool option_enable_stereo_half_resolution_output;
     std::string option_exposure_mode;
     bool option_use_mesh;
     float option_mesh_alpha;
@@ -85,6 +86,7 @@ int main(int argc, char **argv) {
     nh_local.param<std::string>("tf_prefix", option_tf_prefix, "");
     nh_local.param<int>("frequency", option_frequency, -1);
     nh_local.param<int>("resolution", option_resolution, 480);
+    nh_local.param<bool>("enable_stereo_half_resolution_output", option_enable_stereo_half_resolution_output, false);
     nh_local.param<bool>("use_mesh", option_use_mesh, false);
     nh_local.param<float>("mesh_alpha", option_mesh_alpha, 0.0);
     // nh_local.param<bool>("rectified", option_rectified, true);
@@ -162,6 +164,8 @@ int main(int argc, char **argv) {
                 params.all_cameras_fps = option_frequency;
             }
         }
+
+        params.enable_stereo_half_resolution_output = option_enable_stereo_half_resolution_output;
 
         params.tf_prefix = option_tf_prefix;
 

@@ -6,8 +6,6 @@
 
 #include <opencv2/calib3d.hpp>
 
-// #include <opencv2/core/eigen.hpp>
-
 template <typename _Tp> static cv::Mat_<_Tp> toMat(const std::vector<std::vector<_Tp>> vecIn) {
     cv::Mat_<_Tp> matOut(vecIn.size(), vecIn.at(0).size());
     for (int i = 0; i < matOut.rows; ++i) {
@@ -75,8 +73,7 @@ class OakMeshDataGenerator {
                                              dai::CameraBoardSocket socketRight, dai::MonoCameraProperties::SensorResolution resolution, float alpha);
 
     cv::Mat_<float> getNewM(){return m_newM;}
-
-    // cv::Mat_<float> getNewM(int decimation);
+    cv::Mat getR2(){return m_R2;}
     
     void calculateMeshData(const int meshStep, std::vector<std::uint8_t> &dataLeft,
                            std::vector<std::uint8_t> &dataRight);
@@ -198,18 +195,6 @@ void OakMeshDataGenerator::getRectificationTransformFromOpenCV(dai::CalibrationH
     m_newM = cv::Mat_<float>(m_P2, cv::Range(0, 3), cv::Range(0, 3));
     // m_newM = m_M2;
 }
-
-// cv::Mat_<float> OakMeshDataGenerator::getNewM(int decimation) {
-
-//     cv::Mat_<float> decimatedM = m_newM;
-
-//     m_newM(0, 0) /= decimation;
-//     m_newM(1, 1) /= decimation;
-//     m_newM(0, 2) /= decimation;
-//     m_newM(1, 2) /= decimation;
-    
-//     return decimatedM;
-// }
 
 void OakMeshDataGenerator::calculateMeshData(const int meshStep,
                                              std::vector<std::uint8_t> &dataLeft,

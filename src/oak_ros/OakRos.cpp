@@ -9,6 +9,8 @@
 #include "oak_ros/PointCloudConverter.hpp"
 #include "oak_ros/MeshDataGenerator.hpp"
 
+#include <opencv2/core/eigen.hpp>
+
 std::vector<sensor_msgs::Imu>
 ImuInterpolation::updatePacket(const dai::IMUReportAccelerometer &accel,
                                const dai::IMUReportGyroscope &gyro) {
@@ -285,12 +287,12 @@ void OakRos::configureImu() {
 
     // above this threshold packets will be sent in batch of X, if the host is not blocked and USB
     // bandwidth is available
-    imu->setBatchReportThreshold(5);
+    imu->setBatchReportThreshold(2);
     // maximum number of IMU packets in a batch, if it's reached device will block sending until
     // host can receive it if lower or equal to batchReportThreshold then the sending is always
     // blocking on device useful to reduce device's CPU load  and number of lost packets, if CPU
     // load is high on device side due to multiple nodes
-    imu->setMaxBatchReports(20);
+    imu->setMaxBatchReports(5);
 
     // Link plugins IMU -> XLINK
     imu->out.link(xoutIMU->input);
@@ -428,7 +430,7 @@ void OakRos::configureStereos() {
 
             m_stereoDepthMap[name] = stereoDepth;
 
-            stereoDepth->setDefaultProfilePreset(dai::node::StereoDepth::PresetMode::HIGH_DENSITY);
+            stereoDepth->setDefaultProfilePreset(dai::node::StereoDepth::PresetMode::HIGH_ACCURACY);
             stereoDepth->setRectifyEdgeFillColor(0); // black, to better see the cutout
             // stereoDepth->setInputResolution(1280, 720);
             stereoDepth->initialConfig.setMedianFilter(dai::MedianFilter::KERNEL_7x7);
@@ -495,6 +497,58 @@ void OakRos::configureStereos() {
 
                     spdlog::warn("Use Generated mesh data for un-distortion and rectification on {}-{} pair", leftName, rightName);
                     stereoDepth->loadMeshData(dataLeft, dataRight);
+
+                    // publish static tf
+                    {
+                        std::string cameraFrameId = m_params.tf_prefix + rightName + "_camera_rect_nwu";
+                        std::string imuFrameId = m_params.tf_prefix + "imu";
+                        std::string bodyFrameId = m_params.tf_prefix + "base_link_nwu";
+
+                        Eigen::Isometry3f rdf_T_nwu;
+                        rdf_T_nwu.matrix() <<   0, -1, 0, 0,
+                                                0, 0, -1, 0,
+                                                1, 0, 0, 0,
+                                                0, 0, 0, 1;
+
+                        Eigen::Isometry3f nwu_T_frd; // IMU
+                        nwu_T_frd.matrix() <<   1, 0, 0, 0,
+                                                0, -1, 0, 0,
+                                                0, 0, -1, 0,
+                                                0, 0, 0, 1;
+
+                        Eigen::Matrix3f rightCamRect_R_rightCam;
+                        cv2eigen(meshGen.getR2(), rightCamRect_R_rightCam);
+
+                        Eigen::Isometry3f rightCamRect_T_rightCam = Eigen::Isometry3f::Identity();
+                        rightCamRect_T_rightCam.linear() = rightCamRect_R_rightCam.inverse();
+
+                        Eigen::Isometry3f rightCam_T_rightCamRect = rightCamRect_T_rightCam.inverse();
+                        
+                        // spdlog::info("rightCam_T_rightCamRect");
+                        // std::cout << rightCam_T_rightCamRect.matrix() << std::endl;
+
+                        Eigen::Isometry3f imu_T_rightCam;
+                        cv2eigen(toMat(m_calibData.getCameraToImuExtrinsics(m_socketMapping[rightName])), imu_T_rightCam.matrix());
+
+                        if (imu_T_rightCam.linear().maxCoeff() < 0.1) {
+                            throw std::runtime_error("imu exintrisic not initialised on eeprom");
+                        }
+
+                        imu_T_rightCam.translation() /= 100.;
+
+                        // spdlog::info("imu_T_rightCam");
+                        // std::cout << imu_T_rightCam.matrix() << std::endl;
+
+                        // tf between imu and rectified camera (nwu)
+                        publishStaticTransform(imu_T_rightCam * rightCam_T_rightCamRect * rdf_T_nwu, imuFrameId, cameraFrameId);
+
+                        // tf between body and imu
+                        Eigen::Isometry3f body_T_imu = Eigen::Isometry3f::Identity();
+
+                        body_T_imu = nwu_T_frd;
+
+                        publishStaticTransform(body_T_imu, bodyFrameId, imuFrameId);
+                    }
                 }
             }else {
                 for (auto& item : m_stereoDepthMap) {
@@ -553,10 +607,31 @@ void OakRos::configureStereos() {
             if (!m_params.enable_stereo_rectified) {
                 spdlog::info("{} enabling raw stereo streams for {}...", m_params.device_id, nameStereo);
                 // output raw images
-                // stereoDepth->syncedLeft.link(xoutLeft->input);
-                // stereoDepth->syncedRight.link(xoutRight->input);
-                monoLeft->out.link(xoutLeft->input);
-                monoRight->out.link(xoutRight->input);
+
+                if (m_params.enable_stereo_half_resolution_output && m_params.resolutionMap[rightName] == dai::MonoCameraProperties::SensorResolution::THE_800_P) {
+                    
+                    spdlog::warn("{}: configured to output images at 400p while depth is processed at 800p", nameStereo);
+
+                    const int width = monoRight->getResolutionWidth();
+                    const int height = monoRight->getResolutionHeight();
+                    
+                    auto imageManipLeft = m_pipeline.create<dai::node::ImageManip>();
+                    auto imageManipRight = m_pipeline.create<dai::node::ImageManip>();
+
+                    imageManipLeft->initialConfig.setResize(width / 2, height / 2);
+                    imageManipRight->initialConfig.setResize(width / 2, height / 2);
+
+                    monoLeft->out.link(imageManipLeft->inputImage);
+                    monoRight->out.link(imageManipRight->inputImage);
+
+                    imageManipLeft->out.link(xoutLeft->input);
+                    imageManipRight->out.link(xoutRight->input);
+
+                }else{
+                    monoLeft->out.link(xoutLeft->input);
+                    monoRight->out.link(xoutRight->input);
+                }
+                
             } else {
                 spdlog::info("{} enabling rectified stereo streams for {}...", m_params.device_id, nameStereo);
                 // output rectified images
@@ -991,7 +1066,7 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
                 fx, fy, cu, cv, baseline, m_params.depth_decimation_factor));
 
             // TODO: the frame should be right_camera instead of directly base_link, need to fix
-            m_cloudMsgFromDispMap[name]->header.frame_id = m_params.tf_prefix + "base_link_nwu"; // "right_camera_nwu";
+            m_cloudMsgFromDispMap[name]->header.frame_id = m_params.tf_prefix + rightName + "_camera_rect_nwu"; // it should have a tf relation with base_link_nwu
             m_cloudMsgFromDispMap[name]->height = disparityFrame->getHeight();
             m_cloudMsgFromDispMap[name]->width = disparityFrame->getWidth();
             m_cloudMsgFromDispMap[name]->is_dense = false;
@@ -1176,4 +1251,25 @@ dai::DeviceInfo OakRos::getDeviceInfo(const std::string &device_id) {
     }
     spdlog::error("failed to find device with id {}", device_id);
     throw std::runtime_error("");
+}
+
+void OakRos::publishStaticTransform (Eigen::Isometry3f T, std::string parentId, std::string childId) {
+    geometry_msgs::TransformStamped tf;
+    
+    tf.header.stamp = ros::Time().fromNSec(ros::SteadyTime::now().toNSec());
+    tf.header.frame_id = parentId;
+    tf.child_frame_id = childId;
+
+    Eigen::Quaternionf q(T.rotation());
+
+    tf.transform.translation.x = T.translation()[0];
+    tf.transform.translation.y = T.translation()[1];
+    tf.transform.translation.z = T.translation()[2];
+    tf.transform.rotation.w = q.w();
+    tf.transform.rotation.x = q.x();
+    tf.transform.rotation.y = q.y();
+    tf.transform.rotation.z = q.z();
+
+    m_broadcaster.sendTransform(tf);
+
 }

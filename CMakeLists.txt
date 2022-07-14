@@ -21,10 +21,12 @@ endif()
 find_package(Threads REQUIRED)
 find_package(OpenCV 4 REQUIRED)
 
+find_package(Eigen3 REQUIRED)
+
 find_package(Boost REQUIRED COMPONENTS program_options)
 
 find_package(catkin REQUIRED COMPONENTS roscpp sensor_msgs image_transport
-                                        cv_bridge pcl_conversions pcl_ros)
+                                        cv_bridge pcl_conversions pcl_ros tf2 tf2_ros)
 
 # running dependency
 catkin_package(# INCLUDE_DIRS LIBRARIES CATKIN_DEPENDS imu_vn_100 DEPENDS
