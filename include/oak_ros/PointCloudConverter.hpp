@@ -129,12 +129,13 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
                     max_disp = disparity;
 
                 // Missing points denoted by zero
-                if (disparity == 0 || hasMask && (m_mask.at<uint8_t>(v * m_depth_decimation_factor, u * m_depth_decimation_factor) != 255)) {
+                if (disparity <= 1 || hasMask && (m_mask.at<uint8_t>(v * m_depth_decimation_factor, u * m_depth_decimation_factor) != 255)) {
                     *iter_x = *iter_y = *iter_z = *iter_i = bad_point;
                     continue;
                 }
 
-                float depth = m_fx * m_baseline / disparity;
+                // TODO: there seems to be a disparity offset of 1, why?
+                float depth = m_fx * m_baseline / (disparity - 1);
 
                 if (depth >= m_maximum_depth) {
                     *iter_x = *iter_y = *iter_z = *iter_i = bad_point;
@@ -145,8 +146,8 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
 
                 // convert RDF to NWU
                 *iter_x = depth;
-                *iter_y = - (u * m_depth_decimation_factor - m_cu) * m_baseline / disparity;
-                *iter_z = - (v * m_depth_decimation_factor - m_cv) * m_baseline / disparity;
+                *iter_y = - (u * m_depth_decimation_factor - m_cu) * depth / m_fx;
+                *iter_z = - (v * m_depth_decimation_factor - m_cv) * depth / m_fx;
                 *iter_i = intensity;
             }
         }

@@ -19,7 +19,7 @@
         <param name="poe_mode" value="false"/>
         <param name="only_usb2_mode" value="true"/>
         <param name="use_mesh" value="true"/> 
-        <param name="mesh_alpha" value="0.3"/> 
+        <param name="mesh_alpha" value="0.6"/> 
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
         <param name="shutter_speed_us" value="$(arg shutter_speed_us)"/>
         <param name="iso" value="$(arg iso)"/>
