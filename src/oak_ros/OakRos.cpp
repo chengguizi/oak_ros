@@ -495,6 +495,8 @@ void OakRos::configureStereos() {
 
                     m_newMMap[name] = meshGen.getNewM();
 
+                    m_maskRightMap[name] = meshGen.getMaskRight();
+
                     spdlog::warn("Use Generated mesh data for un-distortion and rectification on {}-{} pair", leftName, rightName);
                     stereoDepth->loadMeshData(dataLeft, dataRight);
 
@@ -1065,12 +1067,13 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
             m_disparity2PointCloudConverterMap.emplace(name, new OakPointCloudConverter(
                 fx, fy, cu, cv, baseline, m_params.depth_decimation_factor));
 
-            // TODO: the frame should be right_camera instead of directly base_link, need to fix
             m_cloudMsgFromDispMap[name]->header.frame_id = m_params.tf_prefix + rightName + "_camera_rect_nwu"; // it should have a tf relation with base_link_nwu
             m_cloudMsgFromDispMap[name]->height = disparityFrame->getHeight();
             m_cloudMsgFromDispMap[name]->width = disparityFrame->getWidth();
             m_cloudMsgFromDispMap[name]->is_dense = false;
             m_cloudMsgFromDispMap[name]->is_bigendian = false;
+
+            m_disparity2PointCloudConverterMap[name]->loadMask(m_maskRightMap[name]);
         }
 
         // timestamp

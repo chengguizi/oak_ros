@@ -21,6 +21,8 @@ class OakPointCloudConverter {
 
     void setScale(int scale) { m_scale = scale; }
 
+    void loadMask(cv::Mat_<uint8_t> mask) {m_mask = mask;}
+
     // depth = focal_length_in_pixels * baseline / disparity_in_pixels
     template <typename T>
     void Disparity2PointCloud(std::shared_ptr<dai::ImgFrame> disparityFrame,
@@ -33,9 +35,12 @@ class OakPointCloudConverter {
 
   private:
     float m_fx, m_fy, m_cu, m_cv, m_baseline;
-    float m_maximum_depth = 10;
+    float m_maximum_depth = 15;
+    float m_minimum_depth = 0.15;
     int m_depth_decimation_factor;
     int m_scale = 1;
+
+    cv::Mat_<uint8_t> m_mask;
 };
 
 template <typename T>
@@ -47,6 +52,8 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
     sensor_msgs::PointCloud2Modifier pcd_modifier(*cloudMsg);
 
     // https://github.com/ros-perception/image_pipeline/blob/noetic/depth_image_proc/include/depth_image_proc/depth_conversions.h
+
+    bool hasMask = !m_mask.empty();
 
     if (!imageFrame.get()) {
         pcd_modifier.setPointCloud2FieldsByString(1, "xyz");
@@ -65,7 +72,7 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
                 float disparity = (float)disparity_row[u] / m_scale;
 
                 // Missing points denoted by zero
-                if (disparity == 0) {
+                if (disparity == 0 || hasMask && (m_mask.at<uint8_t>(v * m_depth_decimation_factor, u * m_depth_decimation_factor) != 255) ) {
                     *iter_x = *iter_y = *iter_z = bad_point;
                     continue;
                 }
@@ -122,7 +129,7 @@ void OakPointCloudConverter::Disparity2PointCloud(std::shared_ptr<dai::ImgFrame>
                     max_disp = disparity;
 
                 // Missing points denoted by zero
-                if (disparity <= 0) {
+                if (disparity == 0 || hasMask && (m_mask.at<uint8_t>(v * m_depth_decimation_factor, u * m_depth_decimation_factor) != 255)) {
                     *iter_x = *iter_y = *iter_z = *iter_i = bad_point;
                     continue;
                 }

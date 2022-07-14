@@ -78,10 +78,13 @@ class OakMeshDataGenerator {
     void calculateMeshData(const int meshStep, std::vector<std::uint8_t> &dataLeft,
                            std::vector<std::uint8_t> &dataRight);
 
+    cv::Mat getMaskRight() {return m_maskRight;}
+
   private:
     cv::Mat_<float> m_M1, m_M2;
     cv::Mat m_R1, m_R2, m_P1, m_P2, m_Q;
     cv::Mat_<float> m_newM; // essentially is m_P2's K matrix
+    cv::Mat_<uint8_t> m_maskRight;
     cv::Mat_<float> m_D1, m_D2;
     cv::Size m_imageSize;
 };
@@ -207,6 +210,9 @@ void OakMeshDataGenerator::calculateMeshData(const int meshStep,
     cv::Mat_<float> mapXL, mapYL;
     cv::Mat_<float> mapXR, mapYR;
 
+    m_maskRight = cv::Mat_<uint8_t>(m_imageSize, 0);
+    auto m_dummyWhite = cv::Mat_<uint8_t>(m_imageSize, 255);
+
     if (m_D1.total() == 8 && m_D2.total() == 8) {
         // perspective camera
         cv::initUndistortRectifyMap(m_M1, m_D1, m_R1, m_newM, m_imageSize, CV_32FC1, mapXL, mapYL);
@@ -220,6 +226,17 @@ void OakMeshDataGenerator::calculateMeshData(const int meshStep,
     } else {
         throw std::runtime_error("Not Implemented distortion model");
     }
+
+    cv::remap(m_dummyWhite, m_maskRight, mapXR, mapYR, cv::INTER_LINEAR, cv::BORDER_TRANSPARENT);
+
+    cv::erode(m_maskRight, m_maskRight, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5)),
+     cv::Point(-1,-1),
+     1,
+     cv::BORDER_CONSTANT,
+     cv::Scalar(0));
+
+    // cv::imshow("remap image", m_maskRight);
+    // cv::waitKey(1);
 
     // we assume the image size is a multiple of the step size
     assert(mapXL.rows % meshStep == 0);
