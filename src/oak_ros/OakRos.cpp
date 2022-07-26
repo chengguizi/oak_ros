@@ -388,7 +388,7 @@ void OakRos::configureCameras() {
             m_masterCamera = "camd";
         }
 
-        if (m_masterCamera.empty())
+        if (m_masterCamera.empty() && !m_cameraMap.empty())
             throw std::runtime_error("no master camera configured!");
     }
 }
@@ -1114,14 +1114,14 @@ void OakRos::imuCallback(std::shared_ptr<dai::ADatatype> data) {
         spdlog::debug("accel seq = {}, gyro seq = {}", acceleroValues.sequence,
                       gyroValues.sequence);
 
-        constexpr bool do_interpolation = true;
+        constexpr bool do_interpolation = false;
 
         if (!do_interpolation) {
             double acceleroTs = acceleroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
             double gyroTs = gyroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
 
-            spdlog::info("{} imu accel ts = {}", m_params.device_id, acceleroTs);
-            spdlog::info("{} imu gyro ts = {}", m_params.device_id, gyroTs);
+            spdlog::debug("{} imu accel ts = {}", m_params.device_id, acceleroTs);
+            spdlog::debug("{} imu gyro ts = {}", m_params.device_id, gyroTs);
 
             sensor_msgs::Imu imuMsg;
             // TODO: here we assume to align with gyro timestamp
