@@ -1,14 +1,14 @@
 <launch>
     <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
     <arg name="vehicle" default="$(arg _uav_id)"/>
-    <arg name="resolution" default="800"/>
+    <arg name="resolution" default="400"/>
     <arg name="exposure_mode" default="auto"/>
     <arg name="shutter_speed_us" default="1400"/>
     <arg name="iso" default="200"/>
     <arg name="exposure_compensation" default="-1"/>
     <arg name="ir_laser_dot" default="0"/>
     <arg name="ir_floodlight" default="0"/>
-    <arg name="debug_opencv_image" default="true"/>
+    <arg name="debug_opencv_image" default="false"/>
 
     <node ns="$(arg vehicle)" pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
         <param name="tf_prefix" type = "string" value="$(arg vehicle)/"/>
