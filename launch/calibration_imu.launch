@@ -10,10 +10,10 @@
 
     <node pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
         <param name="resolution" value="$(arg resolution)"/>
-        <param name="frequency" value="10"/>
+        <param name="frequency" value="30"/>
         <param name="rates_workaround" value="false"/>
         <param name="poe_mode" value="false"/>
-        <param name="only_usb2_mode" value="true"/>
+        <param name="only_usb2_mode" value="false"/>
         <!-- <param name="mesh_dir" type ="string" value="$(find oak_ros)/data"/>  -->
         <param name="exposure_mode" type = "string" value="$(arg exposure_mode)"/>
         <param name="shutter_speed_us" value="$(arg shutter_speed_us)"/>
@@ -27,8 +27,8 @@
         <param name="left" value="true"/>
         <param name="right" value="false"/> 
         <param name="camd" value="false"/>
-        <param name="imu_frequency" value="200"/>
-        <param name="imu_use_raw" value="false"/> 
+        <param name="imu_frequency" value="400"/>
+        <param name="imu_use_raw" value="true"/> 
         <param name="depth_left_right" value="false"/>
         <param name="depth_rgb_camd" value="false"/>
         <param name="hardware_sync" value="true"/> 
