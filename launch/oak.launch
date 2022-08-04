@@ -31,7 +31,7 @@
         <param name="left" value="true"/>
         <param name="right" value="true"/> 
         <param name="camd" value="true"/>
-        <param name="imu_frequency" value="400"/>
+        <param name="imu_frequency" value="200"/>
         <param name="imu_use_raw" value="true"/> 
         <param name="enable_stereo_rectified" value="false"/>
         <param name="enable_disparity" value="false"/>

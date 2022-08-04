@@ -279,8 +279,6 @@ void OakRos::configureImu() {
         spdlog::info("IMU is taking raw (unfiltered) values from sensor");
         imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER_RAW, dai::IMUSensor::GYROSCOPE_RAW},
                              m_params.imu_frequency);
-
-        spdlog::warn("Currently assuming the raw data for gyro is expressed in deg/s");
     } else {
         spdlog::info("IMU is taking filtered values from sensor");
         imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER, dai::IMUSensor::GYROSCOPE_CALIBRATED},
@@ -1125,6 +1123,9 @@ void OakRos::imuCallback(std::shared_ptr<dai::ADatatype> data) {
             spdlog::debug("{} imu accel ts = {}", m_params.device_id, acceleroTs);
             spdlog::debug("{} imu gyro ts = {}", m_params.device_id, gyroTs);
 
+            if (acceleroTs != gyroTs)
+                spdlog::warn("imu accel and gyro ts mismatch: {} {}", acceleroTs, gyroTs);
+
             sensor_msgs::Imu imuMsg;
             // TODO: here we assume to align with gyro timestamp
             bool errorDetect = false;
@@ -1157,9 +1158,9 @@ void OakRos::imuCallback(std::shared_ptr<dai::ADatatype> data) {
 
                 // TODO: we assume the gyro is in degree per second
 
-                imuMsg.angular_velocity.x = gyroValues.x * M_PI / 180.;
-                imuMsg.angular_velocity.y = gyroValues.y * M_PI / 180.;
-                imuMsg.angular_velocity.z = gyroValues.z * M_PI / 180.;
+                imuMsg.angular_velocity.x = gyroValues.x;
+                imuMsg.angular_velocity.y = gyroValues.y;
+                imuMsg.angular_velocity.z = gyroValues.z;
 
                 imuMsg.linear_acceleration.x = acceleroValues.x;
                 imuMsg.linear_acceleration.y = acceleroValues.y;
