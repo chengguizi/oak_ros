@@ -51,6 +51,22 @@ class ImuInterpolation {
     }
 };
 
+struct GenericCamera {
+    dai::CameraBoardSocket socket;
+    std::string name;
+    bool monochrome;
+
+    std::shared_ptr<dai::node::MonoCamera> monoCamera;
+    std::shared_ptr<dai::node::ColorCamera> colorCamera;
+
+    dai::MonoCameraProperties::SensorResolution monoResolution;
+    dai::ColorCameraProperties::SensorResolution colorResolution;
+
+    GenericCamera() = delete;
+
+    GenericCamera(const dai::CameraBoardSocket& s) : socket(s) {}
+};
+
 class OakRos : public OakRosInterface {
   public:
     void init(const ros::NodeHandle &nh, const OakRosParams &params);
@@ -120,8 +136,7 @@ class OakRos : public OakRosInterface {
     std::shared_ptr<dai::DataInputQueue> m_controlQueue;
 
     std::shared_ptr<dai::node::IMU> m_imu; // assume there is only one imu sensor in the system
-    std::map<std::string, std::shared_ptr<dai::node::MonoCamera>> m_cameraMap;
-    std::map<std::string, dai::CameraBoardSocket> m_cameraSocketMap;
+    std::map<std::string, GenericCamera> m_cameraMap;
 
     // this is a constant mapping from the string to the corresponding socket enum
     std::map<std::string, dai::CameraBoardSocket> m_socketMapping = {
@@ -133,6 +148,12 @@ class OakRos : public OakRosInterface {
     // map of pairs of stereo
     std::map<std::string, std::shared_ptr<dai::node::StereoDepth>> m_stereoDepthMap;
     std::map<std::string, std::shared_ptr<dai::node::ImageManip>> m_imageManipMap;
+
+    std::map<dai::CameraBoardSocket, std::string> m_connectedCameraNames;
+
+    double m_averageCameraSyncLatency;
+    double m_averageImuLatency;
+    std::map<std::string, double> m_averageStereoLatency;
 
     std::thread m_run, m_watchdog;
     void run();

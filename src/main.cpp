@@ -202,7 +202,10 @@ int main(int argc, char **argv) {
 
         params.debug_opencv_images = option_debug_opencv_image;
 
-        params.enabled_stereo_pairs = {}; //{{"left_rgb", {"left", "rgb"}}};
+        if (params.enable_stereo_rectified || params.enable_disparity || params.enable_depth || params.enable_pointcloud)
+            params.enabled_stereo_pairs = {{"rgb_left", {"rgb", "left"}}};
+        else
+            params.enabled_stereo_pairs = {};
 
         configureResolution(params, option_resolution);
 

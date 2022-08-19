@@ -112,6 +112,9 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
     lastGyroTs = -1;
     m_masterCamera = "";
 
+    m_averageImuLatency = -1;
+    m_averageCameraSyncLatency = -1;
+
     spdlog::info("initialising device {}", m_params.device_id);
 
     // obtain calibration
@@ -130,6 +133,17 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
         m_calibData = device->readCalibration();
 
         spdlog::info("Obtained Calibration Data");
+
+        auto cameraNamesUnordered = device->getCameraSensorNames();
+
+        spdlog::info("Listing physically connected cameras on device:");
+        for (auto& item : cameraNamesUnordered) {
+            m_connectedCameraNames.emplace(item);
+        }
+
+        for (auto& item : m_connectedCameraNames) {
+            std::cout << item.first << ": " << item.second << std::endl;
+        }
 
     }
 
@@ -236,7 +250,7 @@ std::shared_ptr<dai::node::XLinkIn> OakRos::configureControl() {
     // Linking
 
     for (auto &item : m_cameraMap) {
-        auto &camera = item.second;
+        auto &camera = item.second.monoCamera;
         xinControl->out.link(camera->inputControl);
     }
 
@@ -299,14 +313,21 @@ void OakRos::configureImu() {
 }
 
 void OakRos::configureCamera(std::string cameraName) {
+
+    if (!m_connectedCameraNames.count(m_socketMapping[cameraName])) {
+        spdlog::error("{}", cameraName);
+        throw std::runtime_error("slot configured but not physically connected");
+    }
     
     const bool part_of_stereo_pairs = std::any_of(m_params.enabled_stereo_pairs.cbegin(), m_params.enabled_stereo_pairs.cend(), 
         [cameraName](const auto& e){ return e.second.first == cameraName || e.second.second == cameraName;});
 
     spdlog::info("Enable {} socket camera, part of stereo pair = {}", cameraName, part_of_stereo_pairs ? "true" : "false");
-    m_cameraMap[cameraName] = m_pipeline.create<dai::node::MonoCamera>();
+    m_cameraMap.at(cameraName).monoCamera = m_pipeline.create<dai::node::MonoCamera>();
+    m_cameraMap.at(cameraName).monochrome = true;
+    m_cameraMap.at(cameraName).name = m_connectedCameraNames[m_socketMapping[cameraName]];
 
-    auto &camera = m_cameraMap[cameraName];
+    auto camera = m_cameraMap.at(cameraName).monoCamera ;
 
     if (m_params.resolutionMap.count(cameraName)) {
         camera->setResolution(m_params.resolutionMap[cameraName]);
@@ -314,7 +335,7 @@ void OakRos::configureCamera(std::string cameraName) {
         throw std::runtime_error("expect resolution to be defined explicitly for each camera");
     }
 
-    camera->setBoardSocket(m_cameraSocketMap[cameraName]);
+    camera->setBoardSocket(m_cameraMap.at(cameraName).socket);
 
     if (m_params.all_cameras_fps) {
         camera->setFps(m_params.all_cameras_fps.value());
@@ -339,22 +360,22 @@ void OakRos::configureCameras() {
     std::shared_ptr<dai::node::StereoDepth> stereoDepth;
 
     if (m_params.enable_rgb) {
-        m_cameraSocketMap["rgb"] = m_socketMapping["rgb"];
+        m_cameraMap.emplace("rgb", m_socketMapping["rgb"]);
         configureCamera("rgb");
     }
 
     if (m_params.enable_left) {
-        m_cameraSocketMap["left"] = m_socketMapping["left"];
+        m_cameraMap.emplace("left", m_socketMapping["left"]);
         configureCamera("left");
     }
 
     if (m_params.enable_right) {
-        m_cameraSocketMap["right"] = m_socketMapping["right"];
+        m_cameraMap.emplace("right", m_socketMapping["right"]);
         configureCamera("right");
     }
 
     if (m_params.enable_camD) {
-        m_cameraSocketMap["camd"] = m_socketMapping["camd"];
+        m_cameraMap.emplace("camd", m_socketMapping["camd"]);
         configureCamera("camd");
     }
 
@@ -363,27 +384,27 @@ void OakRos::configureCameras() {
         // put all sensors as slave first
         for (auto &item : m_cameraMap) {
             // auto& cameraName = item.first;
-            auto camera = item.second;
+            auto camera = item.second.monoCamera;
             camera->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
         }
 
         if (m_cameraMap.count("rgb")) {
             spdlog::info("setting rgb camera as master");
-            m_cameraMap.at("rgb")->initialControl.setFrameSyncMode(
+            m_cameraMap.at("rgb").monoCamera->initialControl.setFrameSyncMode(
                 dai::CameraControl::FrameSyncMode::OUTPUT);
             m_masterCamera = "rgb";
         }
 
         if (m_masterCamera.empty() && m_cameraMap.count("left")) {
             spdlog::info("setting left camera as master");
-            m_cameraMap.at("left")->initialControl.setFrameSyncMode(
+            m_cameraMap.at("left").monoCamera->initialControl.setFrameSyncMode(
                 dai::CameraControl::FrameSyncMode::OUTPUT);
             m_masterCamera = "left";
         }
 
         if (m_masterCamera.empty() && m_cameraMap.count("camd")) {
             spdlog::info("setting camd camera as master");
-            m_cameraMap.at("camd")->initialControl.setFrameSyncMode(
+            m_cameraMap.at("camd").monoCamera->initialControl.setFrameSyncMode(
                 dai::CameraControl::FrameSyncMode::OUTPUT);
             m_masterCamera = "camd";
         }
@@ -414,8 +435,8 @@ void OakRos::configureStereos() {
         xoutLeft->setStreamName(leftName);
         xoutRight->setStreamName(rightName);
 
-        auto monoLeft = m_cameraMap.at(leftName);
-        auto monoRight = m_cameraMap.at(rightName);
+        auto monoLeft = m_cameraMap.at(leftName).monoCamera;
+        auto monoRight = m_cameraMap.at(rightName).monoCamera;
 
         if (!(m_params.enable_depth || m_params.enable_disparity || m_params.enable_pointcloud ||
                  m_params.enable_stereo_rectified)) {
@@ -710,6 +731,8 @@ void OakRos::run() {
             cv::namedWindow("debug image", cv::WINDOW_NORMAL);
         }
 
+        uint64_t count = 0;
+
         while (m_running) {
             // process stereo data
             constexpr double deltaT = 2e-3; // 2ms trigger delay
@@ -753,6 +776,19 @@ void OakRos::run() {
                     continue;
 
                 spdlog::debug("synced on ts {} for all cameras", maxTs);
+
+                double nowTs = std::chrono::steady_clock::now().time_since_epoch().count() / 1.e9;
+
+                if (m_averageCameraSyncLatency < 0)
+                    m_averageCameraSyncLatency = nowTs - maxTs;
+                else
+                    m_averageCameraSyncLatency = 0.1 * (nowTs - maxTs) + 0.9 * m_averageCameraSyncLatency;
+
+                count++;
+
+                if (count % 100 == 0)
+                    spdlog::info("average latency of synced camera = {:.1f} ms", m_averageCameraSyncLatency * 1e3);
+
                 maxTs += deltaT + deltaT;
 
                 // detect for jumps
@@ -780,7 +816,7 @@ void OakRos::run() {
 
                     if (cameraInfoMap.count(cameraName) == 0) {
                         cameraInfoMap[cameraName] =
-                            getCameraInfo(frameList[i], m_cameraSocketMap[cameraName]);
+                            getCameraInfo(frameList[i], m_cameraMap.at(cameraName).socket);
                     }
                 }
 
@@ -885,6 +921,17 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
 
     // spdlog::info("{} disparity seq = {}, ts = {}", m_params.device_id, seq, ts);
 
+    double nowTs = std::chrono::steady_clock::now().time_since_epoch().count() / 1.e9;
+    double latency = nowTs - ts;
+
+    if (m_averageStereoLatency.count(name) == 0)
+        m_averageStereoLatency[name] = latency;
+    else
+        m_averageStereoLatency[name] = 0.1 * latency + 0.9 * m_averageStereoLatency[name];
+
+    if (seq % 100 == 0 && m_averageStereoLatency.count(name))
+        spdlog::info("average latency of stereo {} = {:.1f} ms", name, m_averageStereoLatency[name] * 1e3);
+
     const float baseline = m_calibData.getBaselineDistance(m_socketMapping[rightName],
                                                            m_socketMapping[leftName], false) /
                              100.;
@@ -895,7 +942,7 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
     // TODO: debug this, and put this outside the callback
     if (!m_params.use_mesh) {
 
-        auto imageSize = getImageSize(m_cameraMap[rightName]->getResolution());
+        auto imageSize = getImageSize(m_cameraMap.at(rightName).monoCamera->getResolution());
 
         // here we assume the on-device rectification uses the right camera's intrinsic
         std::vector<std::vector<float>> intrinsics = m_calibData.getCameraIntrinsics(
@@ -1107,6 +1154,8 @@ void OakRos::imuCallback(std::shared_ptr<dai::ADatatype> data) {
     }
 
     auto imuPackets = imuData->packets;
+    bool updated_latency = false;
+
     for (auto &imuPacket : imuPackets) {
         auto &acceleroValues = imuPacket.acceleroMeter;
         auto &gyroValues = imuPacket.gyroscope;
@@ -1114,11 +1163,27 @@ void OakRos::imuCallback(std::shared_ptr<dai::ADatatype> data) {
         spdlog::debug("accel seq = {}, gyro seq = {}", acceleroValues.sequence,
                       gyroValues.sequence);
 
+        double acceleroTs = acceleroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
+        double gyroTs = gyroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
+
+        if (!updated_latency) {
+            double nowTs = std::chrono::steady_clock::now().time_since_epoch().count() / 1.e9;
+            double latency = nowTs - std::min(acceleroTs, gyroTs);
+
+            if (m_averageImuLatency < 0)
+                m_averageImuLatency = latency;
+            else
+                m_averageImuLatency = 0.1 * latency + 0.9 * m_averageImuLatency;
+
+            updated_latency = true;
+        }
+
+        if (gyroValues.sequence % 500 == 0)
+            spdlog::info("average latency of imu = {:.1f} ms", m_averageImuLatency * 1e3);
+
         bool do_interpolation = m_params.imu_use_raw ? false : true;
 
         if (!do_interpolation) {
-            double acceleroTs = acceleroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
-            double gyroTs = gyroValues.timestamp.get().time_since_epoch().count() / 1.0e9;
 
             spdlog::debug("{} imu accel ts = {}", m_params.device_id, acceleroTs);
             spdlog::debug("{} imu gyro ts = {}", m_params.device_id, gyroTs);
