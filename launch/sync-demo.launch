@@ -10,7 +10,7 @@
     <arg name="ir_floodlight" default="0"/>
 
     <node ns="$(arg vehicle)" pkg="oak_ros" type="oak_ros" name="oak_ros" output="screen" respawn="false">
-        <param name="resolution" value="$(arg resolution)"/>
+        <param name="resolution" type = "string" value="$(arg resolution)"/>
         <param name="frequency" value="15"/>
         <param name="rates_workaround" value="false"/>
         <param name="poe_mode" value="false"/>

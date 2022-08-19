@@ -54,7 +54,9 @@ class ImuInterpolation {
 struct GenericCamera {
     dai::CameraBoardSocket socket;
     std::string name;
+    std::string sensorModel;
     bool monochrome;
+    bool partOfStereoPair;
 
     std::shared_ptr<dai::node::MonoCamera> monoCamera;
     std::shared_ptr<dai::node::ColorCamera> colorCamera;
@@ -149,7 +151,7 @@ class OakRos : public OakRosInterface {
     std::map<std::string, std::shared_ptr<dai::node::StereoDepth>> m_stereoDepthMap;
     std::map<std::string, std::shared_ptr<dai::node::ImageManip>> m_imageManipMap;
 
-    std::map<dai::CameraBoardSocket, std::string> m_connectedCameraNames;
+    std::map<dai::CameraBoardSocket, std::string> m_connectedSensorModels;
 
     double m_averageCameraSyncLatency;
     double m_averageImuLatency;
@@ -164,6 +166,8 @@ class OakRos : public OakRosInterface {
     void configureCameras();
     void configureStereos();
     void configureCamera(std::string cameraName);
+    void configureMonoCamera(GenericCamera& genericCamera);
+    void configureColorCamera(GenericCamera& genericCamera);
 
     // the functions below assumes m_device is properly setup
     void setupControlQueue(std::shared_ptr<dai::node::XLinkIn>);

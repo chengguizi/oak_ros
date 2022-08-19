@@ -50,8 +50,7 @@ struct OakRosParams {
     bool enable_camD = false;
     bool hardware_sync = true;
 
-    std::map<std::string, dai::MonoCameraProperties::SensorResolution>
-        resolutionMap; // dai::ColorCameraProperties::SensorResolution::THE_1080_P;
+    std::map<std::string, std::string> resolutionMap;
     bool enable_stereo_half_resolution_output = true; // only effective when at 800P
 
     bool use_mesh = false;

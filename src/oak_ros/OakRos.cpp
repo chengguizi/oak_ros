@@ -138,10 +138,10 @@ void OakRos::init(const ros::NodeHandle &nh, const OakRosParams &params) {
 
         spdlog::info("Listing physically connected cameras on device:");
         for (auto& item : cameraNamesUnordered) {
-            m_connectedCameraNames.emplace(item);
+            m_connectedSensorModels.emplace(item);
         }
 
-        for (auto& item : m_connectedCameraNames) {
+        for (auto& item : m_connectedSensorModels) {
             std::cout << item.first << ": " << item.second << std::endl;
         }
 
@@ -314,28 +314,69 @@ void OakRos::configureImu() {
 
 void OakRos::configureCamera(std::string cameraName) {
 
-    if (!m_connectedCameraNames.count(m_socketMapping[cameraName])) {
+    if (!m_connectedSensorModels.count(m_socketMapping[cameraName])) {
         spdlog::error("{}", cameraName);
         throw std::runtime_error("slot configured but not physically connected");
     }
-    
-    const bool part_of_stereo_pairs = std::any_of(m_params.enabled_stereo_pairs.cbegin(), m_params.enabled_stereo_pairs.cend(), 
+
+    // TODO: change hard-code logic that assumes AR0234 to be color sensor
+    auto& genericCamera = m_cameraMap.at(cameraName);
+
+    genericCamera.partOfStereoPair = std::any_of(m_params.enabled_stereo_pairs.cbegin(), m_params.enabled_stereo_pairs.cend(), 
         [cameraName](const auto& e){ return e.second.first == cameraName || e.second.second == cameraName;});
 
-    spdlog::info("Enable {} socket camera, part of stereo pair = {}", cameraName, part_of_stereo_pairs ? "true" : "false");
-    m_cameraMap.at(cameraName).monoCamera = m_pipeline.create<dai::node::MonoCamera>();
-    m_cameraMap.at(cameraName).monochrome = true;
-    m_cameraMap.at(cameraName).name = m_connectedCameraNames[m_socketMapping[cameraName]];
+    spdlog::info("Enable {} socket camera, part of stereo pair = {}", cameraName, genericCamera.partOfStereoPair ? "true" : "false");
 
-    auto camera = m_cameraMap.at(cameraName).monoCamera ;
+    genericCamera.sensorModel = m_connectedSensorModels[m_socketMapping[cameraName]];
 
-    if (m_params.resolutionMap.count(cameraName)) {
-        camera->setResolution(m_params.resolutionMap[cameraName]);
+    // the name we gave: rgb, left, right, camd
+    genericCamera.name = cameraName;
+
+    if (genericCamera.sensorModel == "AR0234")
+        genericCamera.monochrome = false;
+    else
+        genericCamera.monochrome = true;
+
+    if (genericCamera.monochrome) {
+        genericCamera.monoCamera = m_pipeline.create<dai::node::MonoCamera>();
+        configureMonoCamera(genericCamera);
+
+    }else {
+        genericCamera.colorCamera = m_pipeline.create<dai::node::ColorCamera>();
+        configureColorCamera(genericCamera);
+    }
+    
+}
+
+void OakRos::configureMonoCamera(GenericCamera& genericCamera) {
+
+    auto camera = genericCamera.monoCamera ;
+
+    if (m_params.resolutionMap.count(genericCamera.name)) {
+
+        dai::MonoCameraProperties::SensorResolution resolution;
+
+        auto& r = m_params.resolutionMap[genericCamera.name];
+
+        if (r == "400")
+            resolution = dai::MonoCameraProperties::SensorResolution::THE_400_P;
+        else if (r == "480")
+            resolution = dai::MonoCameraProperties::SensorResolution::THE_480_P;
+        else if (r == "720")
+            resolution = dai::MonoCameraProperties::SensorResolution::THE_720_P;
+        else if (r == "800")
+            resolution = dai::MonoCameraProperties::SensorResolution::THE_800_P;
+        else
+            throw std::runtime_error("MonoCamera resolution unknown");
+
+        genericCamera.monoResolution = resolution;
+
+        camera->setResolution(resolution);
     }else {
         throw std::runtime_error("expect resolution to be defined explicitly for each camera");
     }
 
-    camera->setBoardSocket(m_cameraMap.at(cameraName).socket);
+    camera->setBoardSocket(m_cameraMap.at(genericCamera.name).socket);
 
     if (m_params.all_cameras_fps) {
         camera->setFps(m_params.all_cameras_fps.value());
@@ -344,13 +385,18 @@ void OakRos::configureCamera(std::string cameraName) {
     // we only establish xlink with the raw camera output if the camera:
     // - is not part of the stereo pairs
 
-    if (!part_of_stereo_pairs) {
+    if (!genericCamera.partOfStereoPair) {
         auto xout = m_pipeline.create<dai::node::XLinkOut>();
-        xout->setStreamName(cameraName);
+        xout->setStreamName(genericCamera.name);
         camera->out.link(xout->input);
 
         spdlog::info("output raw (un-rectified) images");
     }
+
+}
+
+void OakRos::configureColorCamera(GenericCamera& genericCamera) {
+
 }
 
 void OakRos::configureCameras() {
@@ -510,7 +556,7 @@ void OakRos::configureStereos() {
                     meshGen.getRectificationTransformFromOpenCV(m_calibData, 
                         m_socketMapping[leftName], 
                         m_socketMapping[rightName], 
-                        m_params.resolutionMap[leftName], m_params.mesh_alpha);
+                        m_cameraMap.at(leftName).monoResolution, m_params.mesh_alpha);
                     
                     meshGen.calculateMeshData(meshStep, dataLeft, dataRight);
 
@@ -631,7 +677,7 @@ void OakRos::configureStereos() {
                 spdlog::info("{} enabling raw stereo streams for {}...", m_params.device_id, nameStereo);
                 // output raw images
 
-                if (m_params.enable_stereo_half_resolution_output && m_params.resolutionMap[rightName] == dai::MonoCameraProperties::SensorResolution::THE_800_P) {
+                if (m_params.enable_stereo_half_resolution_output && m_cameraMap.at(rightName).monochrome && m_cameraMap.at(rightName).monoResolution == dai::MonoCameraProperties::SensorResolution::THE_800_P) {
                     
                     spdlog::warn("{}: configured to output images at 400p while depth is processed at 800p", nameStereo);
 

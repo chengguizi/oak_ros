@@ -21,29 +21,16 @@ OakRosParams getLowLightParams() {
     return params;
 }
 
-void configureResolution(OakRosParams &params, const int option_resolution) {
-
-    dai::MonoCameraProperties::SensorResolution target;
-
-    if (option_resolution == 480)
-        target = dai::MonoCameraProperties::SensorResolution::THE_480_P;
-    else if (option_resolution == 400)
-        target = dai::MonoCameraProperties::SensorResolution::THE_400_P;
-    else if (option_resolution == 720)
-        target = dai::MonoCameraProperties::SensorResolution::THE_720_P;
-    else if (option_resolution == 800)
-        target = dai::MonoCameraProperties::SensorResolution::THE_800_P;
-    else
-        throw std::runtime_error("Undefined resolution specified");
+void configureResolution(OakRosParams &params, const std::string& option_resolution) {
 
     if (params.enable_left)
-        params.resolutionMap["left"] = target;
+        params.resolutionMap["left"] = option_resolution;
     if (params.enable_right)
-        params.resolutionMap["right"] = target;
+        params.resolutionMap["right"] = option_resolution;
     if (params.enable_rgb)
-        params.resolutionMap["rgb"] = target;
+        params.resolutionMap["rgb"] = option_resolution;
     if (params.enable_camD)
-        params.resolutionMap["camd"] = target;
+        params.resolutionMap["camd"] = option_resolution;
 }
 
 int main(int argc, char **argv) {
@@ -55,7 +42,7 @@ int main(int argc, char **argv) {
 
     std::string option_tf_prefix;
     int option_frequency;
-    int option_resolution;
+    std::string option_resolution;
     bool option_enable_stereo_half_resolution_output;
     std::string option_exposure_mode;
     bool option_use_mesh;
@@ -85,7 +72,7 @@ int main(int argc, char **argv) {
 
     nh_local.param<std::string>("tf_prefix", option_tf_prefix, "");
     nh_local.param<int>("frequency", option_frequency, -1);
-    nh_local.param<int>("resolution", option_resolution, 480);
+    nh_local.param<std::string>("resolution", option_resolution, "400");
     nh_local.param<bool>("enable_stereo_half_resolution_output", option_enable_stereo_half_resolution_output, false);
     nh_local.param<bool>("use_mesh", option_use_mesh, false);
     nh_local.param<float>("mesh_alpha", option_mesh_alpha, 0.0);
