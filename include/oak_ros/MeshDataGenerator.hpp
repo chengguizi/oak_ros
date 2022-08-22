@@ -44,6 +44,20 @@ cv::Size_<int> getImageSize(dai::MonoCameraProperties::SensorResolution resoluti
     return imageSize;
 }
 
+cv::Size_<int> getImageSize(dai::ColorCameraProperties::SensorResolution resolution) {
+
+    cv::Size_<int> imageSize;
+    if (resolution == dai::ColorCameraProperties::SensorResolution::THE_1080_P) {
+            imageSize = cv::Size_<int>(1920, 1080);
+        }else if (resolution == dai::ColorCameraProperties::SensorResolution::THE_1200_P) {
+            imageSize = cv::Size_<int>(1920, 1200);
+        }else {
+            throw std::runtime_error("sensor resolution not implemented");
+        }
+    
+    return imageSize;
+}
+
 template <typename _T, typename _Tp>
 void getRt(std::vector<std::vector<_T>> &T, cv::Mat_<_Tp> &R, cv::Mat_<_Tp> &t) {
     R = cv::Mat_<_Tp>(3, 3);

@@ -250,8 +250,15 @@ std::shared_ptr<dai::node::XLinkIn> OakRos::configureControl() {
     // Linking
 
     for (auto &item : m_cameraMap) {
-        auto &camera = item.second.monoCamera;
-        xinControl->out.link(camera->inputControl);
+
+        if (item.second.monochrome) {
+            auto &camera = item.second.monoCamera;
+            xinControl->out.link(camera->inputControl);
+        }else {
+            auto &camera = item.second.colorCamera;
+            xinControl->out.link(camera->inputControl);
+        }
+        
     }
 
     return xinControl;
@@ -277,6 +284,9 @@ void OakRos::setupControlQueue(std::shared_ptr<dai::node::XLinkIn> xinControl) {
         ctrl.setAutoExposureEnable();
         ctrl.setAutoExposureCompensation(m_params.exposure_compensation);
     }
+
+    // always enable auto white balance
+    ctrl.setAutoWhiteBalanceMode(dai::CameraControl::AutoWhiteBalanceMode::AUTO);
 
     m_controlQueue->send(ctrl);
 }
@@ -350,6 +360,8 @@ void OakRos::configureCamera(std::string cameraName) {
 
 void OakRos::configureMonoCamera(GenericCamera& genericCamera) {
 
+    spdlog::info("{} configured as mono camera", genericCamera.name);
+
     auto camera = genericCamera.monoCamera ;
 
     if (m_params.resolutionMap.count(genericCamera.name)) {
@@ -397,6 +409,52 @@ void OakRos::configureMonoCamera(GenericCamera& genericCamera) {
 
 void OakRos::configureColorCamera(GenericCamera& genericCamera) {
 
+    spdlog::info("{} configured as color camera", genericCamera.name);
+
+    auto camera = genericCamera.colorCamera ;
+
+    if (m_params.resolutionMap.count(genericCamera.name)) {
+
+        dai::ColorCameraProperties::SensorResolution resolution;
+
+        auto& r = m_params.resolutionMap[genericCamera.name];
+
+        if (r == "1080")
+            resolution = dai::ColorCameraProperties::SensorResolution::THE_1080_P;
+        else if (r == "1200")
+            resolution = dai::ColorCameraProperties::SensorResolution::THE_1200_P;
+        else if (genericCamera.sensorModel == "AR0234") {
+            resolution = dai::ColorCameraProperties::SensorResolution::THE_1200_P;
+            spdlog::info("AR0234 at {} slot only supports 1200P", genericCamera.name);
+        }
+        else
+            throw std::runtime_error("ColorCamera resolution unknown");
+
+        genericCamera.colorResolution = resolution;
+
+        camera->setResolution(resolution);
+    }else {
+        throw std::runtime_error("expect resolution to be defined explicitly for each camera");
+    }
+
+    camera->setBoardSocket(m_cameraMap.at(genericCamera.name).socket);
+
+    if (m_params.all_cameras_fps) {
+        camera->setFps(m_params.all_cameras_fps.value());
+    }
+
+    // we only establish xlink with the raw camera output if the camera:
+    // - is not part of the stereo pairs
+
+    if (!genericCamera.partOfStereoPair) {
+        auto xout = m_pipeline.create<dai::node::XLinkOut>();
+        xout->setStreamName(genericCamera.name);
+
+        // TODO: check if isp is the best way for output, probably yes
+        camera->isp.link(xout->input);
+
+        spdlog::info("output raw (un-rectified) images");
+    }
 }
 
 void OakRos::configureCameras() {
@@ -430,29 +488,39 @@ void OakRos::configureCameras() {
         // put all sensors as slave first
         for (auto &item : m_cameraMap) {
             // auto& cameraName = item.first;
-            auto camera = item.second.monoCamera;
-            camera->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+
+            if (item.second.monochrome)
+                item.second.monoCamera->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+            else
+                item.second.colorCamera->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
         }
 
-        if (m_cameraMap.count("rgb")) {
+        if (m_cameraMap.count("rgb") && m_cameraMap.at("rgb").monochrome) {
             spdlog::info("setting rgb camera as master");
             m_cameraMap.at("rgb").monoCamera->initialControl.setFrameSyncMode(
                 dai::CameraControl::FrameSyncMode::OUTPUT);
             m_masterCamera = "rgb";
         }
 
-        if (m_masterCamera.empty() && m_cameraMap.count("left")) {
+        if (m_masterCamera.empty() && m_cameraMap.count("left") && m_cameraMap.at("left").monochrome) {
             spdlog::info("setting left camera as master");
             m_cameraMap.at("left").monoCamera->initialControl.setFrameSyncMode(
                 dai::CameraControl::FrameSyncMode::OUTPUT);
             m_masterCamera = "left";
         }
 
-        if (m_masterCamera.empty() && m_cameraMap.count("camd")) {
+        if (m_masterCamera.empty() && m_cameraMap.count("camd") && m_cameraMap.at("camd").monochrome) {
             spdlog::info("setting camd camera as master");
             m_cameraMap.at("camd").monoCamera->initialControl.setFrameSyncMode(
                 dai::CameraControl::FrameSyncMode::OUTPUT);
             m_masterCamera = "camd";
+        }
+
+        if (m_masterCamera.empty() && m_cameraMap.count("right") && m_cameraMap.at("right").monochrome) {
+            spdlog::info("setting right camera as master");
+            m_cameraMap.at("right").monoCamera->initialControl.setFrameSyncMode(
+                dai::CameraControl::FrameSyncMode::OUTPUT);
+            m_masterCamera = "right";
         }
 
         if (m_masterCamera.empty() && !m_cameraMap.empty())
@@ -481,8 +549,17 @@ void OakRos::configureStereos() {
         xoutLeft->setStreamName(leftName);
         xoutRight->setStreamName(rightName);
 
-        auto monoLeft = m_cameraMap.at(leftName).monoCamera;
-        auto monoRight = m_cameraMap.at(rightName).monoCamera;
+        std::shared_ptr<dai::node::MonoCamera> monoLeft, monoRight;
+        std::shared_ptr<dai::node::ColorCamera> colorLeft, colorRight;
+
+        if ( m_cameraMap.at(leftName).monochrome && m_cameraMap.at(rightName).monochrome) {
+            monoLeft = m_cameraMap.at(leftName).monoCamera;
+            monoRight = m_cameraMap.at(rightName).monoCamera;
+        } else if (!m_cameraMap.at(leftName).monochrome && !m_cameraMap.at(rightName).monochrome) {
+            throw std::runtime_error("color camera stereo is not yet supported");
+        }else{
+            throw std::runtime_error("mixing color and mono camera in the stereo is not yet supported");
+        }
 
         if (!(m_params.enable_depth || m_params.enable_disparity || m_params.enable_pointcloud ||
                  m_params.enable_stereo_rectified)) {
@@ -774,7 +851,20 @@ void OakRos::run() {
         double maxTs = 0;
 
         if (m_params.debug_opencv_images) {
-            cv::namedWindow("debug image", cv::WINDOW_NORMAL);
+
+            for (size_t i = 0; i < cameraList.size(); i++) {
+                if (m_cameraMap.at(cameraList[i]).monochrome) {
+                    cv::namedWindow("debug image mono", cv::WINDOW_NORMAL);
+                    break;
+                }
+            }
+
+            for (size_t i = 0; i < cameraList.size(); i++) {
+                if (!m_cameraMap.at(cameraList[i]).monochrome) {
+                    cv::namedWindow("debug image color", cv::WINDOW_NORMAL);
+                    break;
+                }
+            }
         }
 
         uint64_t count = 0;
@@ -877,19 +967,47 @@ void OakRos::run() {
                     else
                         cameraInfoMap[cameraName].header.stamp = ros::Time().fromSec(tsList[i]);
 
-                    cv_bridge::CvImage cvBridgeImage = cv_bridge::CvImage(
-                        cameraInfoMap[cameraName].header, sensor_msgs::image_encodings::MONO8,
-                        cvFrameMap[cameraName]);
+                    cv_bridge::CvImage cvBridgeImage;
+
+                    if (m_cameraMap.at(cameraName).monochrome) {
+                        if (frameList[i]->getType() != dai::RawImgFrame::Type::RAW8) {
+                            std::cout << static_cast<typename std::underlying_type<dai::RawImgFrame::Type>::type>(frameList[i]->getType()) << std::endl;
+                            throw std::runtime_error("expected image of monochrome to be of RAW8");
+                        }
+                            
+                        
+                        cvBridgeImage = cv_bridge::CvImage(
+                            cameraInfoMap[cameraName].header, sensor_msgs::image_encodings::MONO8,
+                            cvFrameMap[cameraName]);
+
+                    }else{
+                        if (frameList[i]->getType() != dai::RawImgFrame::Type::YUV420p) {
+                            std::cout << static_cast<typename std::underlying_type<dai::RawImgFrame::Type>::type>(frameList[i]->getType()) << std::endl;
+                            throw std::runtime_error("expected image of color to be of YUV420p");
+                        }
+                        // cv::Mat output;
+                        cv::cvtColor(cvFrameMap[cameraName], cvFrameMap[cameraName], cv::ColorConversionCodes::COLOR_YUV2BGR_IYUV);
+                        
+                        cvBridgeImage = cv_bridge::CvImage(
+                            cameraInfoMap[cameraName].header, sensor_msgs::image_encodings::BGR8,
+                            cvFrameMap[cameraName]);
+                    }
+
+                    
 
                     m_cameraPubMap[cameraName]->publish(*cvBridgeImage.toImageMsg(),
                                                         cameraInfoMap[cameraName]);
                 }
 
+                // for monochrome
                 if (m_params.debug_opencv_images) {
                     cv::Mat debugImage;
-
+                    
                     for (size_t i = 0; i < cameraList.size(); i++) {
                         auto &cameraName = cameraList[i];
+
+                        if (!m_cameraMap.at(cameraName).monochrome)
+                            continue;
 
                         if (debugImage.empty())
                             debugImage = cvFrameMap[cameraName].clone();
@@ -897,24 +1015,34 @@ void OakRos::run() {
                             cv::hconcat(debugImage, cvFrameMap[cameraName], debugImage);
                     }
 
-                    // sensor_msgs::CameraInfo info;
-                    // info.width = debugImage.cols;
-                    // info.height = debugImage.rows;
+                    if (!debugImage.empty()) {
+                        cv::imshow("debug image mono", debugImage);
+                        cv::resizeWindow("debug image mono", 1000, 280);
+                        cv::waitKey(3);
+                    }
+                }
 
-                    // if (runStereo && m_params.align_ts_to_right)
-                    //     info.header.stamp = ros::Time().fromSec(tsRight);
-                    // else if (runRgb && m_params.align_ts_to_right)
-                    //     info.header.stamp = ros::Time().fromSec(tsRgb);
+                // for color
+                if (m_params.debug_opencv_images) {
+                    cv::Mat debugImage;
+                    
+                    for (size_t i = 0; i < cameraList.size(); i++) {
+                        auto &cameraName = cameraList[i];
 
-                    // cv_bridge::CvImage debugBridge =
-                    //     cv_bridge::CvImage(info.header,
-                    //                         sensor_msgs::image_encodings::MONO8, debugImage);
+                        if (m_cameraMap.at(cameraName).monochrome)
+                            continue;
 
-                    // m_debugImagePub->publish(*debugBridge.toImageMsg(), info);
+                        if (debugImage.empty())
+                            debugImage = cvFrameMap[cameraName].clone();
+                        else
+                            cv::hconcat(debugImage, cvFrameMap[cameraName], debugImage);
+                    }
 
-                    cv::imshow("debug image", debugImage);
-                    cv::resizeWindow("debug image", 1000, 280);
-                    cv::waitKey(3);
+                    if (!debugImage.empty()) {
+                        cv::imshow("debug image color", debugImage);
+                        cv::resizeWindow("debug image color", 1000, 280);
+                        cv::waitKey(3);
+                    }
                 }
 
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -987,8 +1115,12 @@ void OakRos::disparityCallback(std::shared_ptr<dai::ADatatype> data, std::string
 
     // TODO: debug this, and put this outside the callback
     if (!m_params.use_mesh) {
+        cv::Size_<int> imageSize;
 
-        auto imageSize = getImageSize(m_cameraMap.at(rightName).monoCamera->getResolution());
+        if (m_cameraMap.at(rightName).monochrome)
+            imageSize = getImageSize(m_cameraMap.at(rightName).monoCamera->getResolution());
+        else
+            imageSize = getImageSize(m_cameraMap.at(rightName).colorCamera->getResolution());
 
         // here we assume the on-device rectification uses the right camera's intrinsic
         std::vector<std::vector<float>> intrinsics = m_calibData.getCameraIntrinsics(
