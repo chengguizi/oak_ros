@@ -463,19 +463,19 @@ void OakRos::configureCameras() {
     // configure the stereo sensors' format
     std::shared_ptr<dai::node::StereoDepth> stereoDepth;
 
-    if (m_params.enable_rgb) {
-        m_cameraMap.emplace("rgb", m_socketMapping["rgb"]);
-        configureCamera("rgb");
+    if (m_params.enable_camA) {
+        m_cameraMap.emplace("cama", m_socketMapping["cama"]);
+        configureCamera("cama");
     }
 
-    if (m_params.enable_left) {
-        m_cameraMap.emplace("left", m_socketMapping["left"]);
-        configureCamera("left");
+    if (m_params.enable_camB) {
+        m_cameraMap.emplace("camb", m_socketMapping["camb"]);
+        configureCamera("camb");
     }
 
-    if (m_params.enable_right) {
-        m_cameraMap.emplace("right", m_socketMapping["right"]);
-        configureCamera("right");
+    if (m_params.enable_camC) {
+        m_cameraMap.emplace("camc", m_socketMapping["camc"]);
+        configureCamera("camc");
     }
 
     if (m_params.enable_camD) {
@@ -495,32 +495,16 @@ void OakRos::configureCameras() {
                 item.second.colorCamera->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
         }
 
-        if (m_cameraMap.count("rgb") && m_cameraMap.at("rgb").monochrome) {
-            spdlog::info("setting rgb camera as master");
-            m_cameraMap.at("rgb").monoCamera->initialControl.setFrameSyncMode(
-                dai::CameraControl::FrameSyncMode::OUTPUT);
-            m_masterCamera = "rgb";
-        }
+        for (auto& item : m_cameraMap) {
+            auto& cameraName = item.first;
 
-        if (m_masterCamera.empty() && m_cameraMap.count("left") && m_cameraMap.at("left").monochrome) {
-            spdlog::info("setting left camera as master");
-            m_cameraMap.at("left").monoCamera->initialControl.setFrameSyncMode(
-                dai::CameraControl::FrameSyncMode::OUTPUT);
-            m_masterCamera = "left";
-        }
-
-        if (m_masterCamera.empty() && m_cameraMap.count("camd") && m_cameraMap.at("camd").monochrome) {
-            spdlog::info("setting camd camera as master");
-            m_cameraMap.at("camd").monoCamera->initialControl.setFrameSyncMode(
-                dai::CameraControl::FrameSyncMode::OUTPUT);
-            m_masterCamera = "camd";
-        }
-
-        if (m_masterCamera.empty() && m_cameraMap.count("right") && m_cameraMap.at("right").monochrome) {
-            spdlog::info("setting right camera as master");
-            m_cameraMap.at("right").monoCamera->initialControl.setFrameSyncMode(
-                dai::CameraControl::FrameSyncMode::OUTPUT);
-            m_masterCamera = "right";
+            if (item.second.monochrome) {
+                spdlog::info("setting {} camera as master", cameraName);
+                item.second.monoCamera->initialControl.setFrameSyncMode(
+                    dai::CameraControl::FrameSyncMode::OUTPUT);
+                m_masterCamera = cameraName;
+                break;
+            }
         }
 
         if (m_masterCamera.empty() && !m_cameraMap.empty())
@@ -837,7 +821,7 @@ void OakRos::run() {
         std::vector<double> tsList;
         std::vector<std::shared_ptr<dai::ImgFrame>> frameList;
 
-        std::vector<std::string> cameraCandidates = {"rgb", "left", "right", "camd"};
+        std::vector<std::string> cameraCandidates = {"cama", "camb", "camc", "camd"};
         for (std::string &cameraName : cameraCandidates) {
             if (m_cameraMap.count(cameraName)) {
                 spdlog::info("Streaming {} at index {}", cameraName, cameraList.size());

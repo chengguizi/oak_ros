@@ -27,9 +27,9 @@
         <param name="ir_laser_dot" value="$(arg ir_laser_dot)"/>
         <param name="ir_floodlight" value="$(arg ir_floodlight)"/>
         <param name="imu" value="true"/> 
-        <param name="rgb" value="true"/>
-        <param name="left" value="true"/>
-        <param name="right" value="true"/> 
+        <param name="cama" value="true"/>
+        <param name="camb" value="true"/>
+        <param name="camc" value="true"/> 
         <param name="camd" value="true"/>
         <param name="imu_frequency" value="200"/>
         <param name="imu_use_raw" value="true"/> 

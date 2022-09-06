@@ -23,14 +23,12 @@
         <param name="ir_laser_dot" value="$(arg ir_laser_dot)"/>
         <param name="ir_floodlight" value="$(arg ir_floodlight)"/>
         <param name="imu" value="true"/> 
-        <param name="rgb" value="true"/>
-        <param name="left" value="true"/>
-        <param name="right" value="true"/> 
+        <param name="cama" value="true"/>
+        <param name="camb" value="true"/>
+        <param name="camc" value="true"/> 
         <param name="camd" value="true"/>
         <param name="imu_frequency" value="400"/>
         <param name="imu_use_raw" value="true"/> 
-        <param name="depth_left_right" value="false"/>
-        <param name="depth_rgb_camd" value="false"/>
         <param name="hardware_sync" value="true"/> 
         <param name="debug_opencv_image" value="$(arg debug_opencv_image)"/> 
     </node>

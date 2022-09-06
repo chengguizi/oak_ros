@@ -23,12 +23,12 @@ OakRosParams getLowLightParams() {
 
 void configureResolution(OakRosParams &params, const std::string& option_resolution) {
 
-    if (params.enable_left)
-        params.resolutionMap["left"] = option_resolution;
-    if (params.enable_right)
-        params.resolutionMap["right"] = option_resolution;
-    if (params.enable_rgb)
-        params.resolutionMap["rgb"] = option_resolution;
+    if (params.enable_camA)
+        params.resolutionMap["cama"] = option_resolution;
+    if (params.enable_camB)
+        params.resolutionMap["camb"] = option_resolution;
+    if (params.enable_camC)
+        params.resolutionMap["camc"] = option_resolution;
     if (params.enable_camD)
         params.resolutionMap["camd"] = option_resolution;
 }
@@ -58,9 +58,9 @@ int main(int argc, char **argv) {
     int option_imu_frequency;
     bool option_imu_use_raw;
     bool option_imu;
-    bool option_left;
-    bool option_right;
-    bool option_rgb;
+    bool option_cama;
+    bool option_camb;
+    bool option_camc;
     bool option_camd;
     bool option_enable_stereo_rectified;
     bool option_enable_disparity;
@@ -88,9 +88,9 @@ int main(int argc, char **argv) {
     nh_local.param<bool>("poe_mode", option_poe_mode, false);
     nh_local.param<bool>("only_usb2_mode", option_only_usb2_mode, false);
     nh_local.param<bool>("imu", option_imu, true);
-    nh_local.param<bool>("left", option_left, true);
-    nh_local.param<bool>("right", option_right, true);
-    nh_local.param<bool>("rgb", option_rgb, false);
+    nh_local.param<bool>("cama", option_cama, true);
+    nh_local.param<bool>("camb", option_camb, true);
+    nh_local.param<bool>("camc", option_camc, false);
     nh_local.param<bool>("camd", option_camd, false);
     nh_local.param<bool>("enable_stereo_rectified", option_enable_stereo_rectified, false);
     nh_local.param<bool>("enable_disparity", option_enable_disparity, false);
@@ -176,9 +176,9 @@ int main(int argc, char **argv) {
 
         // params.enable_mesh_dir = option_mesh_dir;
 
-        params.enable_left = option_left;
-        params.enable_right = option_right;
-        params.enable_rgb = option_rgb;
+        params.enable_camA = option_cama;
+        params.enable_camB = option_camb;
+        params.enable_camC = option_camc;
         params.enable_camD = option_camd;
 
         params.enable_imu = option_imu;

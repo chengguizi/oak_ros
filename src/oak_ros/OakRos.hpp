@@ -142,9 +142,9 @@ class OakRos : public OakRosInterface {
 
     // this is a constant mapping from the string to the corresponding socket enum
     std::map<std::string, dai::CameraBoardSocket> m_socketMapping = {
-        {"rgb", dai::CameraBoardSocket::RGB},
-        {"left", dai::CameraBoardSocket::LEFT},
-        {"right", dai::CameraBoardSocket::RIGHT},
+        {"cama", dai::CameraBoardSocket::CAM_A},
+        {"camb", dai::CameraBoardSocket::CAM_B},
+        {"camc", dai::CameraBoardSocket::CAM_C},
         {"camd", dai::CameraBoardSocket::CAM_D}};
 
     // map of pairs of stereo

@@ -44,9 +44,9 @@ struct OakRosParams {
     std::optional<float> all_cameras_fps = {};
 
     // configuration of individual cameras
-    bool enable_rgb = false;
-    bool enable_left = false;
-    bool enable_right = false;
+    bool enable_camA = false;
+    bool enable_camB = false;
+    bool enable_camC = false;
     bool enable_camD = false;
     bool hardware_sync = true;
 
